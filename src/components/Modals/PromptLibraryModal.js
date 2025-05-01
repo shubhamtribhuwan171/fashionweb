@@ -4,175 +4,127 @@ import {
   ModalOverlay,
   ModalContent,
   ModalHeader,
-  ModalFooter,
   ModalBody,
   ModalCloseButton,
-  Button,
   SimpleGrid,
-  Box,
-  Image,
+  Button,
   Text,
-  VStack,
-  HStack,
-  Spinner,
+  Box,
+  Input,
+  InputGroup,
+  InputLeftElement,
   Center,
-  useColorModeValue,
-  IconButton,
+  Icon,
+  Spinner,
+  VStack,
+  useClipboard,
   Tooltip,
-  Tag,
+  IconButton,
+  Flex,
 } from '@chakra-ui/react';
-import { FaCopy } from 'react-icons/fa';
-// Correct import path
+import { FiSearch, FiCopy } from 'react-icons/fi';
 import { getMockPromptExamples } from '../../data/mockData';
 
-const PromptExampleCard = ({ example, onUsePrompt }) => {
-  const cardBg = useColorModeValue('white', 'gray.700');
-  const textColor = useColorModeValue('gray.600', 'gray.400');
-  const promptBg = useColorModeValue('gray.50', 'gray.800');
-  const promptBorder = useColorModeValue('gray.200', 'gray.600');
+function PromptCard({ prompt, onSelect }) {
+  const { hasCopied, onCopy } = useClipboard(prompt.text);
 
   return (
     <Box
+      p={4}
       borderWidth="1px"
-      borderRadius="lg"
-      overflow="hidden"
-      bg={cardBg}
-      boxShadow="md"
-      display="flex"
-      flexDirection="column"
+      borderRadius="md"
+      _hover={{ shadow: 'md', borderColor: 'blue.300' }}
+      position="relative"
+      bg="white"
     >
-      {/* Assume imageUrl exists in mock for examples */}
-      <Image src={example.imageUrl || 'https://via.placeholder.com/300x200?text=Example'} alt={example.name} objectFit="cover" h="200px" />
-
-      <VStack p={4} align="stretch" spacing={3} flexGrow={1}>
-        <HStack justify="space-between">
-            <Text fontWeight="bold" fontSize="lg" >{example.name}</Text>
-            <Tag size="sm" colorScheme={example.type === 'text' ? 'blue' : 'green'}>
-                {example.type === 'text' ? 'Text Only' : 'Text + Image'}
-            </Tag>
-        </HStack>
-
-        {example.description && (
-            <Text fontSize="sm" color={textColor}>{example.description}</Text>
-        )}
-
-        {example.type === 'text_image' && example.referenceImageUrl && (
-            <HStack spacing={2} align="center">
-                <Text fontSize="xs" fontWeight="medium">Ref:</Text>
-                <Image src={example.referenceImageUrl} boxSize="40px" borderRadius="sm" />
-            </HStack>
-        )}
-
-        <Box
-            p={3}
-            bg={promptBg}
-            borderRadius="md"
-            borderWidth="1px"
-            borderColor={promptBorder}
-            flexGrow={1} // Allow prompt box to grow
-            maxH="150px" // Limit height
-            overflowY="auto" // Add scroll if needed
-        >
-            <Text fontSize="xs" fontFamily="monospace" whiteSpace="pre-wrap" wordBreak="break-word">
-                {example.prompt}
-            </Text>
-        </Box>
-
-        <Button
-            colorScheme="blue"
-            size="sm"
-            onClick={() => onUsePrompt(example)} // Pass the whole example object
-            mt={2}
-        >
+      <VStack align="start" spacing={2}>
+        <Text fontWeight="semibold" fontSize="sm">{prompt.category || 'General'}</Text>
+        <Text fontSize="xs" color="gray.600" noOfLines={3}>{prompt.text}</Text>
+      </VStack>
+      <Flex justify="flex-end" mt={3}>
+        <Tooltip label={hasCopied ? 'Copied!' : 'Copy Prompt'} closeOnClick={false}>
+          <IconButton
+            size="xs"
+            icon={<Icon as={FiCopy} />}
+            onClick={onCopy}
+            variant="ghost"
+            aria-label="Copy prompt"
+            mr={2}
+          />
+        </Tooltip>
+        <Button size="xs" colorScheme="blue" variant="outline" onClick={() => onSelect(prompt)}>
           Use Prompt
         </Button>
-      </VStack>
+      </Flex>
     </Box>
   );
-};
+}
 
-const PromptLibraryModal = ({ isOpen, onClose, onSelectPrompt }) => {
+export default function PromptLibraryModal({ isOpen, onClose, onSelectPrompt }) {
+  const [searchTerm, setSearchTerm] = useState('');
   const [examples, setExamples] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const bgColor = useColorModeValue('gray.50', 'gray.800');
-  const headerBg = useColorModeValue('white', 'gray.800');
-  // const footerBg = useColorModeValue('white', 'gray.800');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const fetchExamples = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const fetchedExamples = await getMockPromptExamples();
-        setExamples(fetchedExamples || []); // Ensure array
-      } catch (err) {
-        console.error("Error fetching prompt examples:", err);
-        setError('Failed to load examples.');
-        setExamples([]); // Clear on error
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     if (isOpen) {
-        fetchExamples();
+      setLoading(true);
+      setSearchTerm('');
+      getMockPromptExamples()
+        .then(data => setExamples(data || []))
+        .catch(err => console.error("Error fetching prompts:", err))
+        .finally(() => setLoading(false));
     }
   }, [isOpen]);
 
-  const handleUsePrompt = (example) => {
-      onSelectPrompt({ 
-          prompt: example.prompt,
-          // Adapt type based on your CreateStylePage needs if different from mock
-          type: example.type, 
-          // Pass necessary info if it's an image prompt
-          referenceImage: example.type === 'text_image' && example.referenceImageUrl 
-              ? { url: example.referenceImageUrl, name: `Ref: ${example.name}` } 
-              : null,
-      });
-      onClose(); // Close modal after selection
+  const handleSelect = (prompt) => {
+    onSelectPrompt(prompt);
+    onClose();
   };
 
+  const filteredExamples = examples.filter(p =>
+    p.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.category && p.category.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="6xl" scrollBehavior="inside"> 
+    <Modal isOpen={isOpen} onClose={onClose} size="4xl" scrollBehavior="inside" isCentered>
       <ModalOverlay />
-      <ModalContent bg={bgColor}>
-        <ModalHeader borderBottomWidth="1px" bg={headerBg}>Prompt Library & Examples</ModalHeader>
-        <ModalCloseButton />
-        <ModalBody pt={6} pb={6}>
-          {isLoading ? (
-            <Center h="300px">
-              <Spinner size="xl" />
-            </Center>
-          ) : error ? (
-             <Center h="300px">
-               <Text color="red.500">{error}</Text>
-             </Center>
-          ) : examples.length > 0 ? (
-            <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
-              {examples.map((example) => (
-                <PromptExampleCard
-                  key={example.id}
-                  example={example}
-                  onUsePrompt={handleUsePrompt}
-                />
+      <ModalContent borderRadius="xl">
+        <ModalHeader
+          fontSize="lg"
+          fontWeight="semibold"
+          borderBottomWidth="1px"
+          borderColor="gray.100"
+          py={4} px={6}
+        >
+          Prompt Library
+        </ModalHeader>
+        <ModalCloseButton top={4} right={4} />
+        <ModalBody pt={4} pb={6} px={6}>
+          <InputGroup mb={5}>
+            <InputLeftElement pointerEvents="none">
+              <Icon as={FiSearch} color="gray.400" />
+            </InputLeftElement>
+            <Input
+              placeholder="Search prompts or categories..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              borderRadius="md"
+            />
+          </InputGroup>
+          {loading ? (
+            <Center py={10}><Spinner size="xl" /></Center>
+          ) : filteredExamples.length > 0 ? (
+            <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={5}>
+              {filteredExamples.map((example) => (
+                <PromptCard key={example.id} prompt={example} onSelect={handleSelect} />
               ))}
             </SimpleGrid>
           ) : (
-            <Center h="200px">
-               <Text color="gray.500">No prompt examples available.</Text>
-             </Center>
+            <Center py={10}><Text>No prompts found{searchTerm ? ' matching "' + searchTerm + '"' : ''}.</Text></Center>
           )}
         </ModalBody>
-
-        {/* Footer removed as action is on cards */}
-        {/* <ModalFooter borderTopWidth="1px" bg={footerBg}>
-          <Button variant="ghost" onClick={onClose}>Close</Button>
-        </ModalFooter> */}
       </ModalContent>
     </Modal>
   );
-};
-
-export default PromptLibraryModal; 
+} 

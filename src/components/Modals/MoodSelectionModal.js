@@ -15,8 +15,13 @@ import {
   Text,
   Spinner,
   Center,
+  Input,
+  InputGroup,
+  InputLeftElement,
+  Icon,
 } from '@chakra-ui/react';
 import { getMockMoods } from '../../data/mockData'; // Assuming moods are fetched here
+import { FiSearch } from 'react-icons/fi';
 
 // Custom Radio Card for selection
 function MoodCard(props) {
@@ -56,6 +61,7 @@ function MoodSelectionModal({ isOpen, onClose, onSelectMood }) {
   const [moods, setMoods] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedMoodId, setSelectedMoodId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     let isMounted = true;
@@ -92,37 +98,50 @@ function MoodSelectionModal({ isOpen, onClose, onSelectMood }) {
     onClose(); // Close modal after selection
   };
 
+  const filteredItems = moods.filter(item => 
+    item.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} size="3xl" scrollBehavior="inside" isCentered>
       <ModalOverlay />
-      <ModalContent>
-        <ModalHeader>Select Mood</ModalHeader>
-        <ModalCloseButton />
-        <ModalBody>
+      <ModalContent borderRadius="xl">
+        <ModalHeader 
+          fontSize="lg" 
+          fontWeight="semibold"
+          borderBottomWidth="1px"
+          borderColor="gray.100"
+          py={4} px={6}
+        >
+          Select Mood
+        </ModalHeader>
+        <ModalCloseButton top={4} right={4} />
+        <ModalBody pt={4} pb={6} px={6}>
+           <InputGroup mb={5}>
+                <InputLeftElement pointerEvents="none">
+                    <Icon as={FiSearch} color="gray.400" />
+                </InputLeftElement>
+                <Input 
+                    placeholder="Search moods..." 
+                    value={searchTerm} 
+                    onChange={(e) => setSearchTerm(e.target.value)} 
+                    borderRadius="md"
+                />
+           </InputGroup>
           {loading ? (
             <Center py={5}><Spinner /></Center>
-          ) : (
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} {...group}>
-              {moods.length > 0 ? (
-                moods.map((mood) => {
-                  const radio = getRadioProps({ value: mood.id });
-                  return <MoodCard key={mood.id} mood={mood} {...radio} />;
-                })
-              ) : (
-                <Center py={5}><Text>No moods found.</Text></Center>
-              )}
+          ) : filteredItems.length > 0 ? (
+            <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={5}>
+              {filteredItems.map((item) => (
+                <Box key={item.id} p={4} borderWidth="1px" borderRadius="md" _hover={{ shadow: 'md' }} cursor="pointer" onClick={() => handleSelect(item)} textAlign="center">
+                  {item.name}
+                </Box>
+              ))}
             </SimpleGrid>
+          ) : (
+             <Center py={5}><Text>No items found{searchTerm ? ' matching "' + searchTerm + '"' : ''}.</Text></Center>
           )}
         </ModalBody>
-
-        <ModalFooter>
-          <Button variant="ghost" mr={3} onClick={onClose}>
-            Cancel
-          </Button>
-          <Button colorScheme="purple" onClick={handleSelect} isDisabled={!selectedMoodId}>
-            Select Mood
-          </Button>
-        </ModalFooter>
       </ModalContent>
     </Modal>
   );

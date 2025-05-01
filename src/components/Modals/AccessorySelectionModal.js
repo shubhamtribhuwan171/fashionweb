@@ -20,7 +20,12 @@ import {
   Center,
   useColorModeValue,
   Checkbox,
+  Input,
+  InputGroup,
+  InputLeftElement,
+  Icon,
 } from '@chakra-ui/react';
+import { FiSearch } from 'react-icons/fi';
 // Correct import path
 import { getMockAccessories } from '../../data/mockData'; 
 
@@ -75,6 +80,7 @@ const AccessorySelectionModal = ({ isOpen, onClose, onSelectAccessories, initial
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedAccessoryIds, setSelectedAccessoryIds] = useState(new Set(initialSelectedIds));
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Filters (placeholder)
   // const [categoryFilter, setCategoryFilter] = useState('');
@@ -108,8 +114,8 @@ const AccessorySelectionModal = ({ isOpen, onClose, onSelectAccessories, initial
   // Placeholder filter logic
   const filteredAccessories = useMemo(() => {
     // Add filter logic here
-    return accessories;
-  }, [accessories]); // Add filter states to dependency array if implemented
+    return accessories.filter(acc => acc.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  }, [accessories, searchTerm]);
 
   const handleSelect = (accessoryId, shouldSelect) => {
       setSelectedAccessoryIds(prevIds => {
@@ -131,44 +137,54 @@ const AccessorySelectionModal = ({ isOpen, onClose, onSelectAccessories, initial
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="4xl" scrollBehavior="inside">
+    <Modal isOpen={isOpen} onClose={onClose} size="3xl" scrollBehavior="inside" isCentered>
       <ModalOverlay />
-      <ModalContent bg={bgColor}>
-        <ModalHeader borderBottomWidth="1px" bg={headerBg}>Select Accessories (Optional)</ModalHeader>
-        <ModalCloseButton />
-        <ModalBody pt={6}>
-          {/* Filter Placeholder */}
-          {/* <HStack spacing={4} mb={6}>
-            <Select placeholder="Filter by Category" ... />
-            <Button>Clear Filter</Button>
-          </HStack> */}
-
+      <ModalContent borderRadius="xl">
+        <ModalHeader 
+          fontSize="lg" 
+          fontWeight="semibold"
+          borderBottomWidth="1px"
+          borderColor="gray.100"
+          py={4} px={6}
+        >
+          Select Accessory
+        </ModalHeader>
+        <ModalCloseButton top={4} right={4} />
+        <ModalBody pt={4} pb={6} px={6}>
+           <InputGroup mb={5}>
+                <InputLeftElement pointerEvents="none">
+                    <Icon as={FiSearch} color="gray.400" />
+                </InputLeftElement>
+                <Input 
+                    placeholder="Search accessories..." 
+                    value={searchTerm} 
+                    onChange={(e) => setSearchTerm(e.target.value)} 
+                    borderRadius="md"
+                />
+           </InputGroup>
           {isLoading ? (
-            <Center h="200px">
+            <Center py={5}>
               <Spinner size="xl" />
             </Center>
           ) : error ? (
-             <Center h="200px">
+             <Center py={5}>
                <Text color="red.500">{error}</Text>
              </Center>
-          ) : (
-            <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={5}>
-              {filteredAccessories.length > 0 ? (
-                   filteredAccessories.map((acc) => (
-                    <AccessoryCard
-                      key={acc.id}
-                      accessory={acc}
-                      onSelect={handleSelect}
-                      isSelected={selectedAccessoryIds.has(acc.id)}
-                    />
-                  ))
-              ) : (
-                 <Text gridColumn="1 / -1" textAlign="center" py={10}>No accessories found.</Text>
-              )} 
+          ) : filteredAccessories.length > 0 ? (
+            <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={5}>
+              {filteredAccessories.map((acc) => (
+                <AccessoryCard
+                  key={acc.id}
+                  accessory={acc}
+                  onSelect={handleSelect}
+                  isSelected={selectedAccessoryIds.has(acc.id)}
+                />
+              ))}
             </SimpleGrid>
+          ) : (
+             <Center py={5}><Text>No items found{searchTerm ? ' matching "' + searchTerm + '"' : ''}.</Text></Center>
           )}
         </ModalBody>
-
         <ModalFooter borderTopWidth="1px" bg={footerBg}>
           <Text mr="auto" fontSize="sm" color={useColorModeValue('gray.600', 'gray.400')}>
             {selectedAccessoryIds.size} selected

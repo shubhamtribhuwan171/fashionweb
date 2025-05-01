@@ -14,40 +14,40 @@ import {
   Text,
   Box,
   Input, 
+  InputGroup,
+  InputLeftElement,
   useDisclosure, 
   Center, 
   useColorModeValue,
   AspectRatio,
+  Icon,
 } from '@chakra-ui/react';
-// Correct import path
+import { FiSearch } from 'react-icons/fi';
 import { getMockProducts } from '../../data/mockData'; 
 
 // Simple clickable card specifically for the modal
 function SelectableGarmentCard({ garment, onSelect }) {
-    // Use reference_image_url from mockData structure
     const imageUrl = garment.reference_image_url || 'https://via.placeholder.com/150?text=No+Image'; 
     return (
         <Box 
             borderWidth="1px" 
             borderRadius="lg" 
             overflow="hidden" 
-            p={3} 
             bg={useColorModeValue('white', 'gray.700')} 
             _hover={{ shadow: 'md', cursor: 'pointer', borderColor: 'blue.400' }} 
-            onClick={() => onSelect(garment)} // Pass the whole garment object
+            onClick={() => onSelect(garment)} 
             textAlign="center"
         >
             <AspectRatio ratio={1}>
                 <Image 
                     src={imageUrl} 
                     alt={garment.name} 
-                    borderRadius="md" 
                     objectFit="cover" 
-                    mx="auto" 
-                    mb={2} 
                 />
             </AspectRatio>
-            <Text fontSize="xs" fontWeight="medium" noOfLines={1}>{garment.name}</Text>
+            <Box p={3}>
+                <Text fontSize="xs" fontWeight="medium" noOfLines={1}>{garment.name}</Text>
+            </Box>
         </Box>
     );
 }
@@ -87,22 +87,35 @@ export default function GarmentSelectionModal({ isOpen, onClose, onSelectGarment
   );
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="3xl" scrollBehavior="inside"> {/* Increased size */}
+    <Modal isOpen={isOpen} onClose={onClose} size="3xl" scrollBehavior="inside" isCentered>
       <ModalOverlay />
-      <ModalContent>
-        <ModalHeader>Select a Base Garment</ModalHeader>
-        <ModalCloseButton />
-        <ModalBody pb={6}>
-           <Input 
-              placeholder="Search garments..." 
-              value={searchTerm} 
-              onChange={(e) => setSearchTerm(e.target.value)} 
-              mb={4} 
-            />
+      <ModalContent borderRadius="xl">
+        <ModalHeader 
+          fontSize="lg" 
+          fontWeight="semibold"
+          borderBottomWidth="1px"
+          borderColor="gray.100"
+          py={4} px={6}
+        >
+          Select a Base Garment
+        </ModalHeader>
+        <ModalCloseButton top={4} right={4} />
+        <ModalBody pt={4} pb={6} px={6}>
+           <InputGroup mb={5}>
+                <InputLeftElement pointerEvents="none">
+                    <Icon as={FiSearch} color="gray.400" />
+                </InputLeftElement>
+                <Input 
+                    placeholder="Search garments..." 
+                    value={searchTerm} 
+                    onChange={(e) => setSearchTerm(e.target.value)} 
+                    borderRadius="md"
+                />
+           </InputGroup>
           {loading ? (
             <Center py={5}><Spinner /></Center>
           ) : filteredProducts.length > 0 ? (
-            <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={4}>
+            <SimpleGrid columns={{ base: 2, sm: 3, md: 4, lg: 5 }} spacing={5}>
               {filteredProducts.map((product) => (
                 <SelectableGarmentCard 
                     key={product.id} 
@@ -115,7 +128,6 @@ export default function GarmentSelectionModal({ isOpen, onClose, onSelectGarment
              <Center py={5}><Text>No garments found{searchTerm ? ' matching "' + searchTerm + '"' : ''}.</Text></Center>
           )}
         </ModalBody>
-        {/* Footer removed for simplicity, selection happens on card click */}
       </ModalContent>
     </Modal>
   );

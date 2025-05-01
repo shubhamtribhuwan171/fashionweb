@@ -13,6 +13,8 @@ import {
   Input,
   VStack,
   useToast,
+  Spacer,
+  Flex,
 } from '@chakra-ui/react';
 
 export default function AddGarmentModal({ isOpen, onClose, onAddGarment }) {
@@ -62,47 +64,65 @@ export default function AddGarmentModal({ isOpen, onClose, onAddGarment }) {
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} size="lg">
+    <Modal isOpen={isOpen} onClose={handleClose} size="xl" isCentered>
       <ModalOverlay />
-      <ModalContent>
-        <ModalHeader>Add New Base Garment</ModalHeader>
-        <ModalCloseButton />
-        <ModalBody pb={6}>
-          <VStack spacing={4}>
+      <ModalContent borderRadius="xl">
+        <ModalHeader 
+          fontSize="lg" 
+          fontWeight="semibold" 
+          borderBottomWidth="1px"
+          borderColor="gray.100"
+          py={4}
+          px={6} 
+        >
+          Add New Base Garment
+        </ModalHeader>
+        <ModalCloseButton top={4} right={4} />
+        <ModalBody py={6} px={6}>
+          <VStack spacing={5}>
             <FormControl isRequired>
-              <FormLabel>Garment Name</FormLabel>
+              <FormLabel fontSize="sm" fontWeight="medium">Garment Name</FormLabel>
               <Input 
                 placeholder="e.g., Black Cotton Hoodie" 
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                borderRadius="md"
               />
             </FormControl>
             <FormControl isRequired>
-              <FormLabel>Reference Image URL</FormLabel>
+              <FormLabel fontSize="sm" fontWeight="medium">Reference Image URL</FormLabel>
               <Input 
-                type="url" // Use URL type
+                type="url" 
                 placeholder="https://example.com/image.jpg" 
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
+                borderRadius="md"
               />
-              {/* Remove image preview as we are using URL now */}
             </FormControl>
           </VStack>
         </ModalBody>
 
-        <ModalFooter>
-          <Button variant="ghost" mr={3} onClick={handleClose} isDisabled={isLoading}>
-            Cancel
-          </Button>
-          <Button 
-            colorScheme="blue" 
-            onClick={handleSave} 
-            isLoading={isLoading}
-            loadingText="Adding..."
-            isDisabled={isLoading || !name.trim() || !imageUrl.trim()}
-          >
-            Add Garment
-          </Button>
+        <ModalFooter 
+          borderTopWidth="1px"
+          borderColor="gray.100"
+          px={6}
+          py={4}
+        >
+          <Flex justify="flex-end" width="full">
+            <Button variant="ghost" mr={3} onClick={handleClose} isDisabled={isLoading}>
+              Cancel
+            </Button>
+            <Button 
+              colorScheme="blue" 
+              onClick={handleSave} 
+              isLoading={isLoading}
+              loadingText="Adding..."
+              isDisabled={isLoading || !name.trim() || !imageUrl.trim()}
+              borderRadius="md"
+            >
+              Add Garment
+            </Button>
+          </Flex>
         </ModalFooter>
       </ModalContent>
     </Modal>

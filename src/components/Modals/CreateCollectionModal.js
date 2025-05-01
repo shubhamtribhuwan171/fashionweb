@@ -14,6 +14,7 @@ import {
   Textarea,
   VStack,
   useToast,
+  Flex,
 } from '@chakra-ui/react';
 
 export default function CreateCollectionModal({ isOpen, onClose, onCreateCollection }) {
@@ -53,46 +54,64 @@ export default function CreateCollectionModal({ isOpen, onClose, onCreateCollect
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} size="lg">
+    <Modal isOpen={isOpen} onClose={handleClose} size="xl" isCentered>
       <ModalOverlay />
-      <ModalContent>
-        <ModalHeader>Create New Collection</ModalHeader>
-        <ModalCloseButton />
-        <ModalBody pb={6}>
-          <VStack spacing={4}>
+      <ModalContent borderRadius="xl">
+        <ModalHeader 
+          fontSize="lg" 
+          fontWeight="semibold"
+          borderBottomWidth="1px"
+          borderColor="gray.100"
+          py={4} px={6}
+        >
+          Create New Collection
+        </ModalHeader>
+        <ModalCloseButton top={4} right={4} />
+        <ModalBody py={6} px={6}>
+          <VStack spacing={5} align="stretch">
             <FormControl isRequired>
-              <FormLabel>Collection Name</FormLabel>
+              <FormLabel fontSize="sm" fontWeight="medium">Collection Name</FormLabel>
               <Input 
                 placeholder="e.g., Spring Lookbook 2025" 
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                borderRadius="md"
               />
             </FormControl>
             {/* Keep description input for potential future use, though API doesn't directly support it */}
             <FormControl>
-              <FormLabel>Description (Optional)</FormLabel>
+              <FormLabel fontSize="sm" fontWeight="medium">Description (Optional)</FormLabel>
               <Textarea 
                 placeholder="A brief description of this collection..." 
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                borderRadius="md"
+                size="sm"
               />
             </FormControl>
           </VStack>
         </ModalBody>
 
-        <ModalFooter>
-          <Button variant="ghost" mr={3} onClick={handleClose} isDisabled={isLoading}>
-            Cancel
-          </Button>
-          <Button 
-            colorScheme="blue" 
-            onClick={handleCreate} 
-            isLoading={isLoading}
-            loadingText="Creating..."
-            isDisabled={isLoading || !name.trim()}
-          >
-            Create Collection
-          </Button>
+        <ModalFooter 
+          borderTopWidth="1px"
+          borderColor="gray.100"
+          px={6} py={4}
+        >
+          <Flex justify="flex-end" width="full">
+            <Button variant="ghost" mr={3} onClick={handleClose} isDisabled={isLoading}>
+              Cancel
+            </Button>
+            <Button 
+              colorScheme="blue" 
+              onClick={handleCreate} 
+              isLoading={isLoading}
+              loadingText="Creating..."
+              isDisabled={isLoading || !name.trim()}
+              borderRadius="md"
+            >
+              Create Collection
+            </Button>
+          </Flex>
         </ModalFooter>
       </ModalContent>
     </Modal>

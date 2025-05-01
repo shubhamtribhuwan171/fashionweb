@@ -18,6 +18,7 @@ import {
   useToast,
   Center,
   Box,
+  Flex,
 } from '@chakra-ui/react';
 // Import mock data functions matching the updated mockData.js
 import { getMockCollections, createMockCollection, addAssetToCollection } from '../../data/mockData';
@@ -94,24 +95,31 @@ export default function AddToCollectionModal({ isOpen, onClose, styleId }) {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg" scrollBehavior="inside">
+    <Modal isOpen={isOpen} onClose={onClose} size="xl" scrollBehavior="inside" isCentered>
       <ModalOverlay />
-      <ModalContent>
-        <ModalHeader>Add Look to Collection</ModalHeader>
-        <ModalCloseButton />
-        <ModalBody pb={6}>
+      <ModalContent borderRadius="xl">
+        <ModalHeader 
+          fontSize="lg" 
+          fontWeight="semibold"
+          borderBottomWidth="1px"
+          borderColor="gray.100"
+          py={4} px={6}
+        >
+          Add Look to Collection
+        </ModalHeader>
+        <ModalCloseButton top={4} right={4} />
+        <ModalBody py={6} px={6}>
           {loading ? (
             <Center py={5}><Spinner /></Center>
           ) : ( 
-            <VStack spacing={4} align="stretch">
+            <VStack spacing={5} align="stretch">
               {!createMode && (
                 <>
-                  <Text fontWeight="medium">Select Existing Collection:</Text>
+                  <Text fontWeight="medium" fontSize="sm" mb={2}>Select Existing Collection:</Text>
                   {collections.length > 0 ? (
-                    // Use Box for scrolling instead of VStack directly
-                    <Box maxHeight="200px" overflowY="auto" borderWidth="1px" borderRadius="md" p={2}>
+                    <Box maxHeight="200px" overflowY="auto" borderWidth="1px" borderRadius="md" p={3}>
                       <RadioGroup onChange={setSelectedCollectionId} value={selectedCollectionId}>
-                        <VStack align="stretch" spacing={2}> 
+                        <VStack align="stretch" spacing={3}>
                           {collections.map((col) => (
                             <Radio key={col.id} value={col.id} size="md">
                               {col.name}
@@ -123,7 +131,7 @@ export default function AddToCollectionModal({ isOpen, onClose, styleId }) {
                   ) : (
                     <Text fontSize="sm" color="gray.500">No collections found.</Text>
                   )}
-                  <Button variant="link" size="sm" onClick={() => setCreateMode(true)} isDisabled={saving}>
+                  <Button variant="link" size="sm" onClick={() => setCreateMode(true)} isDisabled={saving} mt={2}>
                     Or Create New Collection...
                   </Button>
                 </>
@@ -131,14 +139,15 @@ export default function AddToCollectionModal({ isOpen, onClose, styleId }) {
               
               {createMode && (
                 <>
-                   <Text fontWeight="medium">Create New Collection:</Text>
+                   <Text fontWeight="medium" fontSize="sm" mb={2}>Create New Collection:</Text>
                    <Input 
                     placeholder="New collection name..." 
                     value={newCollectionName}
                     onChange={(e) => setNewCollectionName(e.target.value)}
                     isDisabled={saving}
+                    borderRadius="md"
                    />
-                   <Button variant="link" size="sm" onClick={() => setCreateMode(false)} isDisabled={saving}>
+                   <Button variant="link" size="sm" onClick={() => setCreateMode(false)} isDisabled={saving} mt={2}>
                     Cancel
                   </Button>
                 </>
@@ -147,19 +156,26 @@ export default function AddToCollectionModal({ isOpen, onClose, styleId }) {
           )}
         </ModalBody>
 
-        <ModalFooter>
-          <Button variant="ghost" mr={3} onClick={onClose} isDisabled={saving}>
-            Cancel
-          </Button>
-          <Button 
-            colorScheme="blue" 
-            onClick={handleSave}
-            isLoading={saving}
-            loadingText={createMode ? "Creating..." : "Adding..."}
-            isDisabled={loading || saving || (createMode ? !newCollectionName.trim() : !selectedCollectionId)}
-          >
-            {createMode ? 'Create & Add' : 'Add to Collection'}
-          </Button>
+        <ModalFooter
+          borderTopWidth="1px"
+          borderColor="gray.100"
+          px={6} py={4}
+        >
+          <Flex justify="flex-end" width="full">
+            <Button variant="ghost" mr={3} onClick={onClose} isDisabled={saving}>
+              Cancel
+            </Button>
+            <Button 
+              colorScheme="blue" 
+              onClick={handleSave}
+              isLoading={saving}
+              loadingText={createMode ? "Creating..." : "Adding..."}
+              isDisabled={loading || saving || (createMode ? !newCollectionName.trim() : !selectedCollectionId)}
+              borderRadius="md"
+            >
+              {createMode ? 'Create & Add' : 'Add to Collection'}
+            </Button>
+          </Flex>
         </ModalFooter>
       </ModalContent>
     </Modal>

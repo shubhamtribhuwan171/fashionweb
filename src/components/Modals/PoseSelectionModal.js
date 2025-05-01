@@ -1,24 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Modal,
   ModalOverlay,
   ModalContent,
   ModalHeader,
-  ModalFooter,
   ModalBody,
   ModalCloseButton,
-  Button,
   SimpleGrid,
+  Button,
+  Text,
   Box,
+  Input, 
+  InputGroup,
+  InputLeftElement,
+  Center,
+  Icon,
   Image,
   useRadio,
-  useRadioGroup,
-  VStack,
-  Text,
-  Spinner,
-  Center,
 } from '@chakra-ui/react';
-import { getMockPoses } from '../../data/mockData'; // Assuming poses are fetched here
+import { FiSearch } from 'react-icons/fi';
 
 // Custom Radio Card for selection
 function PoseCard(props) {
@@ -54,80 +54,70 @@ function PoseCard(props) {
   );
 }
 
-function PoseSelectionModal({ isOpen, onClose, onSelectPose }) {
-  const [poses, setPoses] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedPoseId, setSelectedPoseId] = useState(null);
+const mockPoses = [ // Example mock data
+  { id: 'p1', name: 'Standing Power Pose' }, 
+  { id: 'p2', name: 'Sitting Relaxed' }, 
+  { id: 'p3', name: 'Walking Dynamic' },
+  // ... more poses
+];
 
-  useEffect(() => {
-    let isMounted = true;
-    if (isOpen) {
-      setLoading(true);
-      setSelectedPoseId(null);
-      getMockPoses()
-        .then(data => {
-          if (isMounted) setPoses(data || []);
-        })
-        .catch(err => {
-          console.error("Error fetching poses for modal:", err);
-          if (isMounted) setPoses([]);
-        })
-        .finally(() => {
-          if (isMounted) setLoading(false);
-        });
-    }
-    return () => { isMounted = false; };
-  }, [isOpen]);
+export default function PoseSelectionModal({ isOpen, onClose, onSelectPose }) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [items, setItems] = useState(mockPoses); // Use state for potential fetching
+  const loading = false; // Placeholder
 
-  const { getRootProps, getRadioProps } = useRadioGroup({
-    name: 'pose',
-    onChange: setSelectedPoseId,
-  });
-
-  const group = getRootProps();
-
-  const handleSelect = () => {
-    const selectedPose = poses.find(p => p.id === selectedPoseId);
-    if (selectedPose) {
-      onSelectPose(selectedPose);
-    }
-    onClose(); // Close modal after selection
+  const handleSelect = (item) => {
+    onSelectPose(item);
+    onClose(); 
   };
 
+  const filteredItems = items.filter(item => 
+    item.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="xl">
+    <Modal isOpen={isOpen} onClose={onClose} size="3xl" scrollBehavior="inside" isCentered>
       <ModalOverlay />
-      <ModalContent>
-        <ModalHeader>Select Pose</ModalHeader>
-        <ModalCloseButton />
-        <ModalBody>
+      <ModalContent borderRadius="xl">
+        <ModalHeader 
+          fontSize="lg" 
+          fontWeight="semibold"
+          borderBottomWidth="1px"
+          borderColor="gray.100"
+          py={4} px={6}
+        >
+          Select Pose
+        </ModalHeader>
+        <ModalCloseButton top={4} right={4} />
+        <ModalBody pt={4} pb={6} px={6}>
+           <InputGroup mb={5}>
+                <InputLeftElement pointerEvents="none">
+                    <Icon as={FiSearch} color="gray.400" />
+                </InputLeftElement>
+                <Input 
+                    placeholder="Search poses..." 
+                    value={searchTerm} 
+                    onChange={(e) => setSearchTerm(e.target.value)} 
+                    borderRadius="md"
+                />
+           </InputGroup>
           {loading ? (
-            <Center py={5}><Spinner /></Center>
-          ) : (
-            <SimpleGrid columns={{ base: 2, md: 3 }} spacing={4} {...group}>
-              {poses.length > 0 ? (
-                poses.map((pose) => {
-                  const radio = getRadioProps({ value: pose.id });
-                  return <PoseCard key={pose.id} pose={pose} {...radio} />;
-                })
-              ) : (
-                <Center py={5}><Text>No poses found.</Text></Center>
-              )}
+            <Center py={5}> {/* Add Spinner if loading state is used */}</Center>
+          ) : filteredItems.length > 0 ? (
+            <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={5}> 
+              {/* Replace with actual card component and mapping */}
+              {filteredItems.map((item) => (
+                <Box key={item.id} p={4} borderWidth="1px" borderRadius="md" _hover={{ shadow: 'md' }} cursor="pointer" onClick={() => handleSelect(item)} textAlign="center">
+                  {item.name} 
+                </Box>
+              ))}
             </SimpleGrid>
+          ) : (
+             <Center py={5}><Text>No items found{searchTerm ? ' matching "' + searchTerm + '"' : ''}.</Text></Center>
           )}
         </ModalBody>
-
-        <ModalFooter>
-          <Button variant="ghost" mr={3} onClick={onClose}>
-            Cancel
-          </Button>
-          <Button colorScheme="teal" onClick={handleSelect} isDisabled={!selectedPoseId}>
-            Select Pose
-          </Button>
-        </ModalFooter>
+        {/* No Footer needed for simple selection */}
       </ModalContent>
     </Modal>
   );
-}
-
-export default PoseSelectionModal; 
+} 

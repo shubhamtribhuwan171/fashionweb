@@ -18,9 +18,12 @@ import {
   Center,
   Checkbox, // Added Checkbox
   useColorModeValue, // Added for styling
+  Input,
+  InputGroup,
+  InputLeftElement,
 } from '@chakra-ui/react';
 import { getMockViews } from '../../data/mockData';
-import { FiCamera } from 'react-icons/fi';
+import { FiCamera, FiSearch } from 'react-icons/fi';
 
 // Updated Card to use Checkbox for multi-select
 function ViewCard({ view, onSelect, isSelected }) {
@@ -73,6 +76,7 @@ function ViewSelectionModal({ isOpen, onClose, onSelectViews, initialSelectedIds
   const [loading, setLoading] = useState(false);
   const [selectedViewIds, setSelectedViewIds] = useState(new Set(initialSelectedIds)); // Use Set for IDs
   const [allViews, setAllViews] = useState([]); // Keep a copy of all fetched views
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Fetch views asynchronously
   useEffect(() => {
@@ -133,30 +137,51 @@ function ViewSelectionModal({ isOpen, onClose, onSelectViews, initialSelectedIds
   const modalBg = useColorModeValue('gray.50', 'gray.800');
   const footerBg = useColorModeValue('white', 'gray.800');
 
+  const filteredItems = views.filter(view => 
+    view.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="4xl" scrollBehavior="inside">
+    <Modal isOpen={isOpen} onClose={onClose} size="4xl" scrollBehavior="inside" isCentered>
       <ModalOverlay />
-      <ModalContent bg={modalBg}>
-        <ModalHeader borderBottomWidth="1px">Select Camera Views (Choose one or more)</ModalHeader>
-        <ModalCloseButton />
-        <ModalBody py={6}>
+      <ModalContent borderRadius="xl" bg={modalBg}>
+        <ModalHeader 
+          fontSize="lg" 
+          fontWeight="semibold"
+          borderBottomWidth="1px"
+          borderColor="gray.100"
+          py={4} px={6}
+        >
+          Select Camera Views (Choose one or more)
+        </ModalHeader>
+        <ModalCloseButton top={4} right={4} />
+        <ModalBody pt={4} pb={6} px={6}>
+           <InputGroup mb={5}>
+                <InputLeftElement pointerEvents="none">
+                    <Icon as={FiSearch} color="gray.400" />
+                </InputLeftElement>
+                <Input 
+                    placeholder="Search views..." 
+                    value={searchTerm} 
+                    onChange={(e) => setSearchTerm(e.target.value)} 
+                    borderRadius="md"
+                />
+           </InputGroup>
           {loading ? (
             <Center h="200px"><Spinner size="xl" /></Center>
-          ) : (
-            <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={5}>
-              {views.length > 0 ? (
-                 views.map((view) => (
-                  <ViewCard
-                    key={view.id}
-                    view={view}
-                    onSelect={handleSelect} // Use the new handler
-                    isSelected={selectedViewIds.has(view.id)} // Check if ID is in the Set
-                  />
-                ))
-              ) : (
-                 <Center py={5}><Text>No views found.</Text></Center>
-              )}
+          ) : filteredItems.length > 0 ? (
+            <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={5}>
+              {filteredItems.map((view) => (
+                <ViewCard
+                  key={view.id}
+                  view={view}
+                  onSelect={handleSelect}
+                  isSelected={selectedViewIds.has(view.id)}
+                />
+              ))}
             </SimpleGrid>
+          ) : (
+             <Center py={5}><Text>No views found{searchTerm ? ' matching "' + searchTerm + '"' : ''}.</Text></Center>
           )}
         </ModalBody>
 

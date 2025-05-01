@@ -19,7 +19,12 @@ import {
   Spinner,
   Center,
   useColorModeValue,
+  Input,
+  InputGroup,
+  InputLeftElement,
+  Icon,
 } from '@chakra-ui/react';
+import { FiSearch } from 'react-icons/fi';
 // Correct import path
 import { getMockModels } from '../../data/mockData';
 
@@ -61,6 +66,7 @@ const ModelSelectionModal = ({ isOpen, onClose, onSelectModel }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedModelInternal, setSelectedModelInternal] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Filters (placeholders, add state if needed)
   // const [ethnicityFilter, setEthnicityFilter] = useState('');
@@ -95,8 +101,10 @@ const ModelSelectionModal = ({ isOpen, onClose, onSelectModel }) => {
   // Placeholder filter logic
   const filteredModels = useMemo(() => {
     // Add filtering logic here based on state variables like ethnicityFilter, ageFilter
-    return models;
-  }, [models]); // Add filter states to dependency array if implemented
+    return models.filter(model => 
+      model.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [models, searchTerm]); // Add filter states to dependency array if implemented
 
   const handleSelect = (model) => {
       setSelectedModelInternal(model);
@@ -110,42 +118,52 @@ const ModelSelectionModal = ({ isOpen, onClose, onSelectModel }) => {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="4xl" scrollBehavior="inside">
+    <Modal isOpen={isOpen} onClose={onClose} size="3xl" scrollBehavior="inside" isCentered>
       <ModalOverlay />
-      <ModalContent bg={bgColor}>
-        <ModalHeader borderBottomWidth="1px" bg={headerBg}>Select a Virtual Model</ModalHeader>
-        <ModalCloseButton />
-        <ModalBody pt={6}>
-          {/* Filter Controls Placeholder */}
-           {/* <HStack spacing={4} mb={6}> 
-             <Select placeholder="Filter by Ethnicity" ... />
-             <Select placeholder="Filter by Age Group" ... /> 
-             <Button>Clear Filters</Button> 
-           </HStack> */}
-
+      <ModalContent borderRadius="xl">
+        <ModalHeader 
+          fontSize="lg" 
+          fontWeight="semibold"
+          borderBottomWidth="1px"
+          borderColor="gray.100"
+          py={4} px={6}
+        >
+          Select Model
+        </ModalHeader>
+        <ModalCloseButton top={4} right={4} />
+        <ModalBody pt={4} pb={6} px={6}>
+           <InputGroup mb={5}>
+                <InputLeftElement pointerEvents="none">
+                    <Icon as={FiSearch} color="gray.400" />
+                </InputLeftElement>
+                <Input 
+                    placeholder="Search models..." 
+                    value={searchTerm} 
+                    onChange={(e) => setSearchTerm(e.target.value)} 
+                    borderRadius="md"
+                />
+           </InputGroup>
           {isLoading ? (
-            <Center h="200px">
+            <Center py={5}>
               <Spinner size="xl" />
             </Center>
           ) : error ? (
-             <Center h="200px">
+             <Center py={5}>
                <Text color="red.500">{error}</Text>
              </Center>
-          ) : (
-            <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={5}>
-              {filteredModels.length > 0 ? (
-                   filteredModels.map((model) => (
-                    <ModelCard
-                      key={model.id}
-                      model={model}
-                      onSelect={handleSelect}
-                      isSelected={selectedModelInternal?.id === model.id}
-                    />
-                  ))
-              ) : (
-                 <Text gridColumn="1 / -1" textAlign="center" py={10}>No models match the current filters.</Text>
-              )}
+          ) : filteredModels.length > 0 ? (
+            <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={5}>
+              {filteredModels.map((model) => (
+                <ModelCard
+                  key={model.id}
+                  model={model}
+                  onSelect={handleSelect}
+                  isSelected={selectedModelInternal?.id === model.id}
+                />
+              ))}
             </SimpleGrid>
+          ) : (
+             <Center py={5}><Text>No items found{searchTerm ? ' matching "' + searchTerm + '"' : ''}.</Text></Center>
           )}
         </ModalBody>
 
