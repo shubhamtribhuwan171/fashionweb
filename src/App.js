@@ -14,10 +14,17 @@ import GarmentDetailPage from './pages/GarmentDetailPage';
 import CollectionDetailPage from './pages/CollectionDetailPage';
 import AssetDetailPage from './pages/AssetDetailPage';
 import ExplorePage from './pages/ExplorePage';
+import ModelsPage from './pages/ModelsPage';
+import AccessoriesPage from './pages/AccessoriesPage';
+import ExperimentalCreatePage from './pages/ExperimentalCreatePage';
 
 // Simple theme customization (optional)
 const theme = extendTheme({
   // Add custom theme settings here if needed
+  fonts: {
+    heading: `'Poppins', sans-serif`,
+    body: `'Poppins', sans-serif`,
+  },
 });
 
 // Removed global isAuthenticated variable and login/logout functions modifying it
@@ -42,6 +49,11 @@ const DashboardRoutes = ({ handleLogout }) => (
       <Route path="asset/:assetId" element={<AssetDetailPage />} /> 
       {/* Explore Route */}
       <Route path="explore" element={<ExplorePage />} /> 
+      {/* --- Add New Routes Here --- */}
+      <Route path="models" element={<ModelsPage />} />
+      <Route path="accessories" element={<AccessoriesPage />} />
+      {/* --- Add Experimental Route --- */}
+      <Route path="experimental-create" element={<ExperimentalCreatePage />} /> 
       
       {/* Redirect base /app path to /app/dashboard */}
       <Route index element={<Navigate to="dashboard" replace />} />

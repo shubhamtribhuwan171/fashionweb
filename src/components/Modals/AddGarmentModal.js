@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -15,50 +15,63 @@ import {
   useToast,
   Spacer,
   Flex,
+  Image,
+  Box,
 } from '@chakra-ui/react';
 
-export default function AddGarmentModal({ isOpen, onClose, onAddGarment }) {
+export default function AddGarmentModal({ isOpen, onClose, onAddGarmentWithUpload }) {
   const toast = useToast();
   const [name, setName] = useState('');
-  const [imageUrl, setImageUrl] = useState(''); // Changed from imageFile/previewUrl
+  const [imageFile, setImageFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSave = async () => { // Make async to potentially await onAddGarment
-    if (!name.trim() || !imageUrl.trim()) {
-      toast({ title: 'Please provide both a name and an image URL.', status: 'warning', duration: 3000 });
+  useEffect(() => {
+    if (!imageFile) {
+      setPreviewUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(imageFile);
+    setPreviewUrl(objectUrl);
+
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [imageFile]);
+
+  const handleFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setImageFile(e.target.files[0]);
+    } else {
+      setImageFile(null);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!name.trim() || !imageFile) {
+      toast({ title: 'Please provide both a name and an image file.', status: 'warning', duration: 3000 });
       return;
     }
 
-    // Basic URL validation (optional but recommended)
-    try {
-        new URL(imageUrl);
-    } catch (_) {
-        toast({ title: 'Invalid Image URL', description: 'Please enter a valid URL.', status: 'warning', duration: 3000 });
-        return;
-    }
-    
     setIsLoading(true);
-    console.log('Adding new garment:', { name, reference_image_url: imageUrl });
+    console.log('Attempting to add garment with upload:', { name, imageFile });
     
     try {
-        // Call the parent function to handle the actual adding (API or mock)
-        await onAddGarment({ 
-            name, 
-            reference_image_url: imageUrl, 
-        }); 
-        // Success is handled by the parent (toast, close)
-        handleClose(); // Close modal after successful add call returns
-    } catch (error) { 
-        // Error should be handled by the parent (toast)
-        console.error("Error adding garment (from modal perspective):", error);
+      await onAddGarmentWithUpload({ 
+          name: name.trim(), 
+          imageFile: imageFile, 
+      });
+      handleClose();
+    } catch (error) {
+      console.error("Error in add garment process (modal perspective):", error);
+      toast({ title: 'Failed to Add Garment', description: error.message || 'An unexpected error occurred.', status: 'error', duration: 5000 });
     } finally {
-        setIsLoading(false); // Ensure loading state is turned off
+      setIsLoading(false);
     }
   };
 
   const handleClose = () => {
       setName('');
-      setImageUrl(''); // Reset URL state
+      setImageFile(null);
+      setPreviewUrl(null);
       setIsLoading(false);
       onClose();
   }
@@ -75,30 +88,37 @@ export default function AddGarmentModal({ isOpen, onClose, onAddGarment }) {
           py={4}
           px={6} 
         >
-          Add New Base Garment
+          Add New Apparel Item
         </ModalHeader>
         <ModalCloseButton top={4} right={4} />
         <ModalBody py={6} px={6}>
           <VStack spacing={5}>
             <FormControl isRequired>
-              <FormLabel fontSize="sm" fontWeight="medium">Garment Name</FormLabel>
+              <FormLabel fontSize="sm" fontWeight="medium">Apparel Name</FormLabel>
               <Input 
                 placeholder="e.g., Black Cotton Hoodie" 
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 borderRadius="md"
+                isDisabled={isLoading}
               />
             </FormControl>
             <FormControl isRequired>
-              <FormLabel fontSize="sm" fontWeight="medium">Reference Image URL</FormLabel>
+              <FormLabel fontSize="sm" fontWeight="medium">Reference Image</FormLabel>
               <Input 
-                type="url" 
-                placeholder="https://example.com/image.jpg" 
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
+                type="file" 
+                accept="image/png, image/jpeg, image/webp"
+                onChange={handleFileChange}
+                p={1.5}
                 borderRadius="md"
+                isDisabled={isLoading}
               />
             </FormControl>
+            {previewUrl && (
+              <Box mt={4} borderWidth="1px" borderRadius="md" p={2}>
+                <Image src={previewUrl} alt="Image Preview" maxH="200px" borderRadius="sm" />
+              </Box>
+            )}
           </VStack>
         </ModalBody>
 
@@ -113,14 +133,26 @@ export default function AddGarmentModal({ isOpen, onClose, onAddGarment }) {
               Cancel
             </Button>
             <Button 
-              colorScheme="blue" 
               onClick={handleSave} 
               isLoading={isLoading}
-              loadingText="Adding..."
-              isDisabled={isLoading || !name.trim() || !imageUrl.trim()}
+              isDisabled={isLoading || !name.trim() || !imageFile}
+              bgGradient="linear(to-r, teal.400, purple.500, blue.500)"
+              color="white"
+              fontWeight="semibold"
+              _hover={{
+                bgGradient: "linear(to-r, teal.500, purple.600, blue.600)",
+                boxShadow: "lg",
+                transform: "translateY(-3px) scale(1.03)",
+              }}
+              _active={{
+                bgGradient: "linear(to-r, teal.600, purple.700, blue.700)",
+                transform: "translateY(-1px) scale(1.00)"
+              }}
+              boxShadow="md"
+              transition="all 0.25s cubic-bezier(.08,.52,.52,1)"
               borderRadius="md"
             >
-              Add Garment
+              Add Apparel
             </Button>
           </Flex>
         </ModalFooter>

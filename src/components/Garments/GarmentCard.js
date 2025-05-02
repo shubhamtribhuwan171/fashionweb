@@ -10,11 +10,14 @@ import {
   LinkBox,
   LinkOverlay,
   useColorModeValue,
-  AspectRatio
+  AspectRatio,
+  IconButton,
+  Spacer
 } from '@chakra-ui/react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { FaTrash } from 'react-icons/fa';
 
-export default function GarmentCard({ garment }) {
+export default function GarmentCard({ garment, onDelete }) {
   const navigate = useNavigate();
   // Use reference_image_url from the API/mock data structure
   const imageUrl = garment.reference_image_url || 'https://via.placeholder.com/200?text=No+Image';
@@ -26,28 +29,51 @@ export default function GarmentCard({ garment }) {
     e.preventDefault();
     e.stopPropagation();
     console.log('Navigating to create style with garment:', garment.id);
-    // Navigate to the create style page, passing the garment ID in state
-    navigate('/app/create-style', { state: { preselectedGarmentId: garment.id } });
+    // Correct the navigation path and state key
+    navigate('/app/create', { state: { selectedGarmentId: garment.id } });
+  };
+
+  // Handle delete button click
+  const handleDeleteClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation(); // Prevent LinkOverlay navigation
+    if (onDelete) {
+      onDelete(); // Call the passed onDelete handler
+    }
   };
 
   return (
-    <LinkBox as="article" borderWidth="1px" borderRadius="lg" overflow="hidden" bg={cardBg} _hover={{ shadow: 'md' }}>
-       <AspectRatio ratio={1} >
-            <Image
+    <LinkBox as="article" borderWidth="1px" borderRadius="lg" overflow="hidden" bg={cardBg} _hover={{ shadow: 'md' }} position="relative">
+      <AspectRatio ratio={1}>
+        <Box>
+          <Image
             src={imageUrl}
             alt={garment.name || 'Garment Image'}
-            objectFit="cover" 
-            />
-       </AspectRatio>
+            objectFit="cover"
+          />
+        </Box>
+      </AspectRatio>
+      {onDelete && (
+        <IconButton
+          icon={<FaTrash />}
+          aria-label="Delete garment"
+          variant="ghost"
+          colorScheme="red"
+          size="sm"
+          position="absolute"
+          top={2}
+          right={2}
+          onClick={handleDeleteClick}
+        />
+      )}
       <VStack p={4} spacing={3} align="stretch">
-        <Heading size="sm" noOfLines={1} textAlign="center">
+        <Heading size="sm" noOfLines={1} >
           <LinkOverlay as={RouterLink} to={detailLink}>
             {garment.name || 'Untitled Garment'}
           </LinkOverlay>
         </Heading>
-        {/* Removed View Details button for simplicity, LinkOverlay handles click */}
-        <Button size="sm" colorScheme="blue" onClick={handleUseForStyle} mt={2}>
-            Visualize with Garment
+        <Button size="sm" colorScheme="purple" onClick={handleUseForStyle} mt={2}>
+          Use Apparel
         </Button>
       </VStack>
     </LinkBox>

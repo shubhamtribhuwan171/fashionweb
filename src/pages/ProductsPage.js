@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
 import {
   Box,
   Heading,
@@ -11,39 +11,85 @@ import {
   useToast,
   Spinner,
   Center,
+  Alert,
+  AlertIcon,
+  Flex,
+  Spacer,
+  Input,
+  InputGroup,
+  InputLeftElement,
+  Icon,
+  Skeleton,
+  SkeletonText,
 } from '@chakra-ui/react';
+import axios from 'axios'; // Import axios
 // Adjust import paths with correct casing
 import GarmentCard from '../components/Garments/GarmentCard';
 import AddGarmentModal from '../components/Modals/AddGarmentModal';
-// Use mock data functions
-import { getMockProducts, createMockProduct } from '../data/mockData';
+import { FaPlus, FaSafari } from 'react-icons/fa'; // Corrected icon import
+import { usePageHeader } from '../components/Layout/DashboardLayout'; // Import hook
 
-function ProductsPage() { // Changed to named export
-  const { isOpen, onOpen, onClose } = useDisclosure();
+// TODO: Replace with actual workspace ID from context/state management
+const getMockWorkspaceId = () => '95d29ad4-47fa-48ee-85cb-cbf762eb400a';
+
+// TODO: Move to config
+const API_BASE_URL = 'https://productmarketing-ai-f0e989e4e1ad.herokuapp.com';
+
+// Skeleton Card Component (matches GarmentCard structure)
+const SkeletonGarmentCard = () => (
+  <Box borderWidth="1px" borderRadius="lg" overflow="hidden" p={3}>
+    <Skeleton height="150px" /> {/* Approximate image height */} 
+    <SkeletonText mt="4" noOfLines={2} spacing="4" skeletonHeight="2" />
+  </Box>
+);
+
+export default function ProductsPage() {
+  const { isOpen: isAddModalOpen, onOpen: onAddModalOpen, onClose: onAddModalClose } = useDisclosure();
   const toast = useToast();
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  // Removed useAuth() for now, assume a default workspace or handle later
-  const currentWorkspaceId = 'mock_workspace_1'; // Placeholder
+  const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  // Placeholder - replace with actual workspace context
+  const currentWorkspaceId = getMockWorkspaceId(); 
+  const { setHeader } = usePageHeader(); // Use hook
+
+  const numSkeletons = 12; // Number of skeletons
+
+  const getAuthConfig = useCallback(() => {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+        toast({ title: "Authentication Error", description: "Please log in.", status: "error" });
+        return null;
+    }
+    return { headers: { Authorization: `Bearer ${token}` } };
+  }, [toast]);
 
   // --- Fetch Products Function --- 
   const fetchProducts = useCallback(async (showLoading = true) => {
-    if (!currentWorkspaceId) {
+    const config = getAuthConfig();
+    if (!currentWorkspaceId || !config) {
       setIsLoading(false);
       setProducts([]);
+      if (!config) setError("Authentication required.");
+      else setError("No workspace selected."); // Assuming setError exists
       return;
     }
+    // Clear error if config is valid
+    // if (typeof setError === 'function') setError(null); 
 
     if (showLoading) setIsLoading(true);
     try {
-      // Use mock function
-      const data = await getMockProducts(currentWorkspaceId);
-      setProducts(data || []);
+      const response = await axios.get(`${API_BASE_URL}/api/products`, {
+        ...config, // Spread auth headers
+        params: { workspaceId: currentWorkspaceId } // Pass workspaceId as query param
+      });
+      setProducts(response.data || []);
     } catch (error) {
-      console.error("Error fetching mock products:", error);
+      console.error("Error fetching products:", error);
       toast({
         title: 'Error fetching products',
-        description: error.message,
+        description: error.response?.data?.message || error.message,
         status: 'error',
         duration: 5000,
         isClosable: true,
@@ -52,90 +98,193 @@ function ProductsPage() { // Changed to named export
     } finally {
       if (showLoading) setIsLoading(false);
     }
-  }, [currentWorkspaceId, toast]);
+  }, [currentWorkspaceId, toast, getAuthConfig]); // Added getAuthConfig dependency
 
   // --- Initial Fetch --- 
   useEffect(() => {
     fetchProducts();
-  }, [fetchProducts]); 
+    setHeader('Virtual Closet', 'Manage your apparel items.'); // Updated header
+    return () => setHeader('', ''); // Clear on unmount
+  }, [fetchProducts, setHeader]); 
 
-  // --- Add Product Function --- 
-  const handleAddGarment = async (newGarmentData) => {
-    if (!currentWorkspaceId) {
-      toast({ title: "Cannot add garment", description: "Workspace missing.", status: "error" });
-      // Reject the promise so the modal knows it failed
-      return Promise.reject(new Error("Workspace missing"));
-    }
-    
-    const { name, reference_image_url } = newGarmentData;
-
-    if (!name || !reference_image_url) {
-        toast({ title: "Missing Information", description: "Both name and image URL are required.", status: "warning"});
-        return Promise.reject(new Error("Missing information"));
+  // --- Add Product Function (with Upload) --- 
+  const handleAddGarmentWithUpload = async ({ name, imageFile }) => {
+    const config = getAuthConfig();
+    if (!currentWorkspaceId || !config || !name || !imageFile) {
+        toast({ title: "Cannot add garment", description: "Missing workspace, auth, name, or image file.", status: "error" });
+        return Promise.reject(new Error("Missing information or auth"));
     }
 
-    // Return the promise from createMockProduct so the modal can await it
+    // Use a Promise to signal success/failure back to the modal
     return new Promise(async (resolve, reject) => {
       try {
-        // Use mock function
-        const createdProduct = await createMockProduct({
-           name, 
-           reference_image_url, 
-           workspace_id: currentWorkspaceId 
+        // Step 1: Upload image
+        const formData = new FormData();
+        formData.append('image', imageFile);
+        formData.append('workspaceId', currentWorkspaceId);
+        
+        console.log("Uploading image...");
+        const uploadResponse = await axios.post(`${API_BASE_URL}/api/input-images/upload`, formData, {
+           headers: {
+             ...config.headers, // Spread auth headers
+             'Content-Type': 'multipart/form-data', // Important for file uploads
+           },
         });
+        
+        const imageUrl = uploadResponse.data?.storage_url;
+        if (!imageUrl) {
+          throw new Error("Image uploaded, but no URL was returned.");
+        }
+        console.log("Image uploaded successfully:", imageUrl);
 
-        // Add the new product to the start of the list for immediate feedback
-        setProducts(prevProducts => [createdProduct, ...prevProducts]); 
+        // Step 2: Create product using the uploaded image URL
+        console.log("Creating product record...");
+        const productPayload = {
+            name,
+            reference_image_url: imageUrl,
+            workspace_id: currentWorkspaceId
+        };
+        const createResponse = await axios.post(`${API_BASE_URL}/api/products`, productPayload, config);
+
         toast({ title: "Garment added successfully!", status: "success", duration: 2000 });
-        // Don't close modal here, let the modal close itself on successful promise resolution
-        resolve(createdProduct); // Resolve the promise on success
+        fetchProducts(false); // Refresh list without full loading spinner
+        resolve(createResponse.data); // Resolve promise with new product data
 
       } catch (error) {
-        console.error("Error adding mock garment:", error);
+        console.error("Error adding garment:", error);
+        const errorMsg = error.response?.data?.message || error.message || "An unknown error occurred";
         toast({
           title: 'Error adding garment',
-          description: error.message,
+          description: errorMsg,
           status: 'error',
           duration: 5000,
           isClosable: true,
         });
-        reject(error); // Reject the promise on failure
+        reject(new Error(errorMsg)); // Reject the promise on failure
       }
     });
   };
 
+  // --- Delete Product Function --- 
+  const handleDeleteGarment = async (garmentId) => {
+    const config = getAuthConfig();
+    if (!config || !garmentId) {
+        toast({ title: "Cannot delete garment", description: "Auth or Garment ID missing.", status: "error" });
+        return;
+    }
+
+    // Confirmation dialog
+    if (window.confirm('Are you sure you want to delete this base garment?')) {
+        try {
+            console.log(`Attempting to delete garment: ${garmentId}`);
+            await axios.delete(`${API_BASE_URL}/api/products/${garmentId}`, config);
+            toast({ title: "Garment deleted", status: "success", duration: 2000 });
+            // Remove from state locally for instant feedback
+            setProducts(prev => prev.filter(p => p.id !== garmentId));
+            // Alternatively, refetch the list: fetchProducts(false);
+        } catch (error) {
+             console.error("Error deleting garment:", error);
+            const errorMsg = error.response?.data?.message || error.message || "Could not delete garment.";
+            toast({
+                title: 'Error deleting garment',
+                description: errorMsg,
+                status: 'error',
+                duration: 5000,
+                isClosable: true,
+            });
+        }
+    }
+  };
+
+  const handleAddSuccess = () => {
+    fetchProducts(); // Refresh list after adding
+  };
+
+  const filteredProducts = products.filter(p => 
+    (p.name || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <VStack spacing={6} align="stretch">
-      <HStack justifyContent="space-between">
-        <Box>
-          {/* Match heading from API reference/PRD */}
-          <Heading size="lg">Base Garments</Heading> 
-          <Text color="gray.500">Manage your base clothing items.</Text>
-          {/* Example of showing limitation */}
-          <Text fontSize="xs" color="gray.400" mt={1}>Note: Editing and deleting garments is not currently supported via the API.</Text>
-        </Box>
-        <Button colorScheme="blue" onClick={onOpen}>Add Garment</Button>
-      </HStack>
+      <Flex mb={6} align="center" wrap="wrap" gap={4}>
+        {/* Removed Heading here, handled by Layout */}
+        {/* <Heading size="lg">Base Garments</Heading> */}
+        <Spacer />
+        <InputGroup maxW={{ base: '100%', sm: '250px' }}>
+          <InputLeftElement pointerEvents="none">
+             <Icon as={FaSafari} color="gray.400" /> 
+          </InputLeftElement>
+          <Input 
+              placeholder="Search apparel..." // Updated placeholder
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
+              borderRadius="md"
+          />
+        </InputGroup>
+        {/* Apply gradient style to button */}
+        <Button 
+          leftIcon={<FaPlus />} 
+          onClick={onAddModalOpen}
+          // Add custom styling
+          bgGradient="linear(to-r, teal.400, purple.500, blue.500)"
+          color="white"
+          fontWeight="semibold"
+          _hover={{
+            bgGradient: "linear(to-r, teal.500, purple.600, blue.600)",
+            boxShadow: "lg",
+            transform: "translateY(-3px) scale(1.03)",
+          }}
+          _active={{
+            bgGradient: "linear(to-r, teal.600, purple.700, blue.700)",
+            transform: "translateY(-1px) scale(1.00)"
+          }}
+          boxShadow="md"
+          transition="all 0.25s cubic-bezier(.08,.52,.52,1)"
+          borderRadius="md"
+        >
+          Add Apparel 
+        </Button>
+      </Flex>
 
       {!currentWorkspaceId ? (
         <Center py={10}><Text color="orange.500">Please select a workspace to view garments.</Text></Center>
       ) : isLoading ? (
-        <Center py={10}>
-          <Spinner size="xl" />
-        </Center>
-      ) : products.length > 0 ? (
-        <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={6}>
-          {products.map((product) => (
-            <GarmentCard key={product.id} garment={product} />
+        // Show Skeleton Grid while loading
+        <SimpleGrid columns={{ base: 2, sm: 3, md: 4, lg: 5, xl: 6 }} spacing={6}>
+          {Array.from({ length: numSkeletons }).map((_, index) => (
+            <SkeletonGarmentCard key={index} />
           ))}
         </SimpleGrid>
-      ) : (
-        <Center py={10}><Text>No garments found for this workspace. Click 'Add Garment' to add your first one.</Text></Center>
+      ) : error ? (
+        <Alert status="error">
+          <AlertIcon />
+          {error}
+        </Alert>
+      ) : filteredProducts.length > 0 ? (
+        <SimpleGrid columns={{ base: 2, sm: 3, md: 4, lg: 5, xl: 6 }} spacing={6}>
+          {filteredProducts.map(product => (
+            <GarmentCard 
+                key={product.id} 
+                garment={product} 
+                onDelete={() => handleDeleteGarment(product.id)} // Pass delete handler 
+            />
+          ))}
+        </SimpleGrid>
+      ) : ( // Empty state
+        <Center p={10} borderWidth="1px" borderRadius="md" borderStyle="dashed">
+           <Heading size="md" color="gray.500">
+             {/* Updated empty state text */}
+             {searchTerm ? `No apparel found matching "${searchTerm}"` : 'Your virtual closet is empty.'}
+           </Heading>
+        </Center>
       )}
       
-      <AddGarmentModal isOpen={isOpen} onClose={onClose} onAddGarment={handleAddGarment} />
+      <AddGarmentModal 
+        isOpen={isAddModalOpen} 
+        onClose={onAddModalClose} 
+        // Ensure the prop name matches what the modal expects (onAddGarmentWithUpload)
+        onAddGarmentWithUpload={handleAddGarmentWithUpload} 
+      />
     </VStack>
   );
 }
-
-export default ProductsPage; // Add default export 

@@ -1,28 +1,50 @@
-import React from 'react';
-import { Box, VStack, Button, Link as ChakraLink, Divider, Flex, Text, Icon, Spacer, Menu, MenuButton, MenuList, MenuItem, Avatar } from '@chakra-ui/react';
-import { NavLink as RouterNavLink, useNavigate } from 'react-router-dom';
-import { FiHome, FiLayers, FiPlusSquare, FiGrid, FiBox, FiSearch, FiSettings, FiLogOut, FiChevronDown, FiBriefcase, FiPlus } from 'react-icons/fi';
+import React, { useState } from 'react';
+import { Box, VStack, Button, Link as ChakraLink, Divider, Flex, Text, Icon, Badge, Menu, MenuButton, MenuList, MenuItem, Avatar } from '@chakra-ui/react';
+import { NavLink as RouterNavLink, useNavigate, useLocation } from 'react-router-dom';
+import { FiHome, FiLayers, FiPlusSquare, FiGrid, FiBox, FiSettings, FiLogOut, FiChevronDown, FiChevronUp, FiBriefcase, FiPlus, FiCompass, FiStar, FiShoppingBag, FiUser, FiGift, FiMessageSquare, FiThumbsUp, FiCheck } from 'react-icons/fi';
 
 // Custom NavLink style for active state
 const activeLinkStyle = {
-  backgroundColor: 'black',
-  color: 'white',
-  fontWeight: 'bold',
-  borderRadius: 'md',
+  backgroundColor: 'white',
+  color: 'gray.800', // Darker text for active item
+  fontWeight: 'semibold',
+  borderRadius: 'md', // Slightly less rounded corners
+  boxShadow: 'sm', // Subtle shadow for active item
 };
 
 const baseLinkStyle = {
   display: 'flex',
   alignItems: 'center',
   padding: '0.75rem 1.5rem',
-  borderRadius: 'md',
+  borderRadius: 'md', // Match active style
+  color: 'gray.600', // Medium gray for inactive text
   _hover: {
-    backgroundColor: 'gray.200',
-    color: 'blue.600',
+    backgroundColor: 'whiteAlpha.500', // Subtle white hover
+    color: 'gray.800',
   },
 };
 
-function SidebarNavLink({ to, icon, children }) {
+// Nested link style for sub-items
+const nestedLinkStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  padding: '0.5rem 0.5rem 0.5rem 3rem',
+  color: 'gray.600',
+  borderRadius: 'md',
+  _hover: {
+    backgroundColor: 'whiteAlpha.500',
+    color: 'gray.800',
+  },
+};
+
+const nestedActiveLinkStyle = {
+  backgroundColor: 'white', // White background for active nested
+  color: 'gray.800',
+  fontWeight: 'semibold',
+  boxShadow: 'sm',
+};
+
+function SidebarNavLink({ to, icon, children, badge }) {
   return (
     <ChakraLink
       as={RouterNavLink}
@@ -33,69 +55,195 @@ function SidebarNavLink({ to, icon, children }) {
     >
       <Icon as={icon} mr={3} w={5} h={5} />
       {children}
+      {badge && (
+        <Badge ml="auto" colorScheme="purple" variant="solid" fontSize="xs"> {/* Changed badge color */}
+          {badge}
+        </Badge>
+      )}
     </ChakraLink>
   );
 }
 
-function WorkspaceSelector({ currentWorkspace, userWorkspaces = [], onAddWorkspace, onSwitchWorkspace }) {
-  const current = currentWorkspace || { id: '1', name: 'My Workspace' }; 
-  const workspaces = userWorkspaces.length > 0 ? userWorkspaces : [{ id: '1', name: 'My Workspace' }];
+function NestedNavLink({ to, children }) {
+  return (
+    <ChakraLink
+      as={RouterNavLink}
+      to={to}
+      style={({ isActive }) => ({ ...nestedLinkStyle, ...(isActive ? nestedActiveLinkStyle : {}) })}
+      _focus={{ boxShadow: 'none' }}
+      width="100%"
+      borderRadius="md"
+    >
+      {children}
+    </ChakraLink>
+  );
+}
 
+function CollapsibleSection({ icon, title, children, isOpenByDefault = false }) {
+  const [isOpen, setIsOpen] = useState(isOpenByDefault);
+  
+  return (
+    <Box width="100%" mb={2}>
+      <Button
+        onClick={() => setIsOpen(!isOpen)}
+        variant="ghost"
+        justifyContent="flex-start"
+        width="100%"
+        py={2}
+        px={4}
+        leftIcon={<Icon as={icon} mr={2} />}
+        rightIcon={<Icon as={FiChevronDown} transform={isOpen ? 'rotate(180deg)' : 'rotate(0)'} transition="transform 0.2s" />}
+        borderRadius="md"
+        color="gray.600" // Match inactive text color
+        _hover={{ bg: 'whiteAlpha.500' }} // Match hover style
+      >
+        {title}
+      </Button>
+      <Box
+        height={isOpen ? 'auto' : '0'}
+        overflow="hidden"
+        transition="height 0.2s"
+        ml={2}
+        mt={isOpen ? 2 : 0}
+      >
+        {children}
+      </Box>
+    </Box>
+  );
+}
+
+// Section Header Component
+function SectionHeader({ title }) {
+  return (
+    <Text
+      fontSize="xs"
+      fontWeight="semibold"
+      color="gray.500"
+      textTransform="uppercase"
+      letterSpacing="wider"
+      px={4}
+      py={2}
+      mt={4}
+      mb={1}
+    >
+      {title}
+    </Text>
+  );
+}
+
+function WorkspaceSelector({ currentWorkspace, userWorkspaces = [], onAddWorkspace, onSwitchWorkspace, isLoading }) {
+  const current = currentWorkspace;
+  const workspaces = userWorkspaces;
+
+  if (isLoading) {
+    return (
+      <Button w="full" variant="ghost" mb={6} isLoading={true} justifyContent="flex-start" px={3} py={2} h="auto" borderRadius="md">Loading...</Button>
+    );
+  }
+
+  if (!current) {
+    return (
+       <Button w="full" variant="ghost" mb={6} justifyContent="flex-start" px={3} py={2} h="auto" borderRadius="md" onClick={onAddWorkspace}>
+           No Workspace Found
+       </Button>
+    );
+  }
+  
   return (
     <Menu placement="bottom-start" >
-      <MenuButton 
-        as={Button}
-        w="full" 
-        variant="ghost" 
-        mb={8} 
-        _hover={{ bg: 'gray.200' }}
-        _active={{ bg: 'gray.300' }}
-        display="flex"
-        alignItems="center"
-        justifyContent="space-between"
-        px={2}
-        h="auto"
-        py={2}
-      >
-        <Flex align="center" flex="1" minWidth="0">
-          <Avatar 
-            icon={<Icon as={FiBriefcase} color="white" />}
-            size="sm" 
-            mr={3} 
-            bg="black"
-          /> 
-          <Box flex="1" overflow="hidden">
-            <Text fontWeight="semibold" fontSize="sm" color="gray.800" isTruncated>
-              {current.name} 
-            </Text>
-          </Box>
-        </Flex>
-        <Icon as={FiChevronDown} ml={2} flexShrink={0} />
-      </MenuButton>
-      <MenuList zIndex="popover">
-        {workspaces.map((ws) => (
-          <MenuItem 
-            key={ws.id} 
-            onClick={() => onSwitchWorkspace(ws.id)}
-            fontWeight={ws.id === current.id ? 'bold' : 'normal'}
+      {({ isOpen }) => (
+        <>
+          <MenuButton 
+            as={Button}
+            w="full" 
+            variant="ghost" 
+            mb={6} 
+            _hover={{ bg: 'whiteAlpha.500' }}
+            _active={{ bg: 'whiteAlpha.700' }}
+            textAlign="left"
+            px={3}
+            py={2} // Adjusted padding
+            h="auto"
+            borderRadius="md"
+            position="relative" // Needed for absolute positioning of arrow
+            isDisabled={isLoading} // Disable button while loading
           >
-            {ws.name}
-          </MenuItem>
-        ))}
-        <Divider />
-        <MenuItem 
-          icon={<Icon as={FiPlus} />} 
-          onClick={onAddWorkspace}
-        >
-          Add Workspace
-        </MenuItem>
-      </MenuList>
+            <Flex align="center" w="full">
+              {/* Avatar Icon */}
+              <Avatar 
+                icon={<Icon as={FiBriefcase} color="white" />}
+                size="md" // Slightly larger avatar
+                mr={3} 
+                bg="gray.600" 
+                borderRadius="md" // Match button radius
+              /> 
+              {/* Text Content */}
+              <VStack align="start" spacing={0} flex="1" overflow="hidden">
+                <Text fontWeight="semibold" fontSize="sm" color="gray.700" isTruncated>
+                  {current.name} 
+                </Text>
+                <Text fontSize="xs" color="gray.500" isTruncated>
+
+                </Text>
+              </VStack>
+              {/* Arrow Icon - Positioned absolutely */}
+              <Icon 
+                as={isOpen ? FiChevronUp : FiChevronDown} 
+                position="absolute" 
+                right={3} 
+                bottom={2} // Position below text
+                color="gray.500" 
+              />
+            </Flex>
+          </MenuButton>
+          <MenuList zIndex="popover" minWidth="220px"> {/* Ensure minimum width */} 
+            {workspaces.map((ws) => (
+              <MenuItem 
+                key={ws.id} 
+                onClick={() => onSwitchWorkspace(ws.id)} 
+                py={2} // Vertical padding for menu items
+              >
+                <Flex align="center" w="full">
+                  <Avatar 
+                    icon={<Icon as={FiBriefcase} color="white" />}
+                    size="sm" 
+                    mr={3} 
+                    bg="gray.400" 
+                    borderRadius="md"
+                  />
+                  <VStack align="start" spacing={0} flex="1" overflow="hidden">
+                    <Text fontWeight="medium" fontSize="sm" color="gray.800" isTruncated>
+                      {ws.name}
+                    </Text>
+                    <Text fontSize="xs" color="gray.500" isTruncated>
+  
+                    </Text>
+                  </VStack>
+                  {ws.id === current.id && (
+                    <Icon as={FiCheck} color="purple.500" ml={3} />
+                  )}
+                </Flex>
+              </MenuItem>
+            ))}
+            <Divider />
+            <MenuItem 
+              icon={<Icon as={FiPlus} />} 
+              onClick={onAddWorkspace}
+              py={2}
+            >
+              Add Workspace
+            </MenuItem>
+          </MenuList>
+        </>
+      )}
     </Menu>
   );
 }
 
-function Sidebar({ logout }) {
+function Sidebar({ logout, workspaces, currentWorkspace, onSwitchWorkspace, onAddWorkspace, isLoadingWorkspaces }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const user = { name: 'User Name', email: 'user@example.com' }; // Placeholder
 
   const handleLogout = () => {
     logout();
@@ -103,14 +251,61 @@ function Sidebar({ logout }) {
   };
   
   const handleCreateStyle = () => {
-    navigate('/app/create-style');
+    navigate('/app/create');
   }
+
+  const isAssetRouteActive = 
+    location.pathname.includes('/app/products') || 
+    location.pathname.includes('/app/models') || 
+    location.pathname.includes('/app/accessories');
+
+  const mainLinks = [
+    {
+      label: 'Dashboard',
+      href: '/app/dashboard',
+      icon: FiHome
+    },
+    {
+      label: 'My Creations',
+      href: '/app/generations',
+      icon: FiLayers
+    },
+    {
+      label: 'Explore Styles',
+      href: '/app/explore',
+      icon: FiCompass
+    },
+    {
+      label: 'Collections',
+      href: '/app/collections',
+      icon: FiStar
+    }
+  ];
+
+  const assetLinks = [
+    {
+      label: 'Virtual Closet',
+      href: '/app/products',
+      icon: FiShoppingBag
+    },
+    {
+      label: 'Models',
+      href: '/app/models',
+      icon: FiUser
+    },
+    {
+      label: 'Accessories',
+      href: '/app/accessories',
+      icon: FiGift,
+      badge: 'New!' // Keep badge data if needed
+    }
+  ];
 
   return (
     <Box 
       w="250px" 
-      bg="gray.100"
-      color="gray.700"
+      bg="gray.100" // Lighter gray background
+      color="gray.600"
       p={4}
       display="flex"
       flexDirection="column"
@@ -118,46 +313,92 @@ function Sidebar({ logout }) {
       borderRight="1px solid"
       borderColor="gray.200"
     >
-      <WorkspaceSelector />
+
       
-      <VStack spacing={2} align="stretch" flexGrow={1}>
-        <SidebarNavLink to="/app/dashboard" icon={FiHome}>Dashboard</SidebarNavLink>
-        <SidebarNavLink to="/app/generations" icon={FiLayers}>My Looks</SidebarNavLink>
-        <SidebarNavLink to="/app/create-style" icon={FiPlusSquare}>Create Style</SidebarNavLink>
-        <SidebarNavLink to="/app/collections" icon={FiGrid}>Collections</SidebarNavLink>
-        <SidebarNavLink to="/app/products" icon={FiBox}>Base Garments</SidebarNavLink>
-        <SidebarNavLink to="/app/explore" icon={FiSearch}>Explore</SidebarNavLink>
+      <WorkspaceSelector 
+        userWorkspaces={workspaces}
+        currentWorkspace={currentWorkspace}
+        onSwitchWorkspace={onSwitchWorkspace}
+        onAddWorkspace={onAddWorkspace}
+        isLoading={isLoadingWorkspaces}
+      /> 
+      
+      <VStack spacing={1} align="stretch" flexGrow={1}> {/* Reduced spacing */} 
+        <SectionHeader title="Main" />
+        {mainLinks.map((link) => (
+          <SidebarNavLink 
+            key={link.label} 
+            to={link.href} 
+            icon={link.icon}
+            badge={link.badge}
+          >
+            {link.label}
+          </SidebarNavLink>
+        ))}
+
+        <SectionHeader title="Assets" />
+        <CollapsibleSection
+          title="View Assets"
+          icon={FiBox}
+          isOpenByDefault={isAssetRouteActive}
+        >
+          <VStack spacing={1} align="stretch" pl={0}> 
+            {assetLinks.map((link) => (
+              <Flex key={link.label} align="center">
+                <NestedNavLink to={link.href}>
+                  {link.label} 
+                  {link.badge && (
+                    <Badge ml="auto" colorScheme="purple" variant="solid" fontSize="xs">
+                      {link.badge}
+                    </Badge>
+                  )}
+                </NestedNavLink>
+              </Flex>
+            ))}
+          </VStack>
+        </CollapsibleSection>
+
       </VStack>
 
-      <VStack spacing={2} align="stretch" mt={8}>
-        <SidebarNavLink to="/app/settings" icon={FiSettings}>Settings</SidebarNavLink>
-      </VStack>
-      
+      {/* Create Style Button - Positioned before settings/logout */}
       <Button 
         leftIcon={<Icon as={FiPlusSquare} />}
-        colorScheme="blue"
+        colorScheme="gray" // Use gray scheme for dark button
+        bg="gray.800"
+        color="white"
         variant="solid"
+        borderRadius="md"
         width="full"
         my={4}
         onClick={handleCreateStyle}
+        _hover={{ bg: "gray.700" }}
       >
         Create Style
       </Button>
 
-      <Divider my={2} borderColor="gray.200" />
-      
-      <Button 
-        onClick={handleLogout} 
-        variant="ghost"
-        width="full"
-        color="gray.600"
-        leftIcon={<Icon as={FiLogOut} />}
-        justifyContent="flex-start"
-        pl={4}
-        _hover={{ bg: 'gray.200', color: 'red.500' }}
-      >
-        Logout
-      </Button>
+      <VStack spacing={1} align="stretch" mt="auto"> {/* Push settings/user to bottom */} 
+        <Divider my={2} borderColor="gray.200" />
+        {/* User Info Section */}
+        <Flex 
+          align="center" 
+          p={2} 
+          borderRadius="md" 
+          _hover={{ bg: 'whiteAlpha.500', cursor: 'pointer' }} 
+          onClick={handleLogout} // Temporary: Clicking this logs out
+        >
+          <Avatar size="sm" name={user.name} mr={3} bg="gray.600" />
+          <Box flex="1" overflow="hidden">
+            <Text fontSize="sm" fontWeight="semibold" color="gray.800" isTruncated>
+              {user.name}
+            </Text>
+            <Text fontSize="xs" color="gray.600" isTruncated>
+              {user.email}
+            </Text>
+          </Box>
+          <Icon as={FiLogOut} ml={2} />
+        </Flex>
+      </VStack>
+
     </Box>
   );
 }

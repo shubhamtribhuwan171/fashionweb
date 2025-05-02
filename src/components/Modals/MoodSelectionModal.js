@@ -90,12 +90,12 @@ function MoodSelectionModal({ isOpen, onClose, onSelectMood }) {
 
   const group = getRootProps();
 
-  const handleSelect = () => {
+  const handleConfirmSelection = () => {
     const selectedMood = moods.find(m => m.id === selectedMoodId);
     if (selectedMood) {
       onSelectMood(selectedMood);
     }
-    onClose(); // Close modal after selection
+    onClose(); // Close modal regardless of selection after confirm click
   };
 
   const filteredItems = moods.filter(item => 
@@ -133,7 +133,7 @@ function MoodSelectionModal({ isOpen, onClose, onSelectMood }) {
           ) : filteredItems.length > 0 ? (
             <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={5}>
               {filteredItems.map((item) => (
-                <Box key={item.id} p={4} borderWidth="1px" borderRadius="md" _hover={{ shadow: 'md' }} cursor="pointer" onClick={() => handleSelect(item)} textAlign="center">
+                <Box key={item.id} p={4} borderWidth="1px" borderRadius="md" _hover={{ shadow: 'md' }} cursor="pointer" onClick={() => handleConfirmSelection(item)} textAlign="center">
                   {item.name}
                 </Box>
               ))}
@@ -142,6 +142,16 @@ function MoodSelectionModal({ isOpen, onClose, onSelectMood }) {
              <Center py={5}><Text>No items found{searchTerm ? ' matching "' + searchTerm + '"' : ''}.</Text></Center>
           )}
         </ModalBody>
+        <ModalFooter>
+          <Button variant="ghost" mr={3} onClick={onClose}>Cancel</Button>
+          <Button 
+            colorScheme="purple"
+            onClick={handleConfirmSelection}
+            isDisabled={!selectedMoodId}
+          >
+            Select Mood
+          </Button>
+        </ModalFooter>
       </ModalContent>
     </Modal>
   );

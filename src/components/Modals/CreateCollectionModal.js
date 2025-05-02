@@ -98,18 +98,27 @@ export default function CreateCollectionModal({ isOpen, onClose, onCreateCollect
           px={6} py={4}
         >
           <Flex justify="flex-end" width="full">
-            <Button variant="ghost" mr={3} onClick={handleClose} isDisabled={isLoading}>
-              Cancel
-            </Button>
-            <Button 
-              colorScheme="blue" 
-              onClick={handleCreate} 
+            <Button variant='ghost' mr={3} onClick={handleClose}>Cancel</Button>
+            <Button
+              onClick={handleCreate}
               isLoading={isLoading}
-              loadingText="Creating..."
-              isDisabled={isLoading || !name.trim()}
+              bgGradient="linear(to-r, teal.400, purple.500, blue.500)"
+              color="white"
+              fontWeight="semibold"
+              _hover={{
+                bgGradient: "linear(to-r, teal.500, purple.600, blue.600)",
+                boxShadow: "lg",
+                transform: "translateY(-3px) scale(1.03)",
+              }}
+              _active={{
+                bgGradient: "linear(to-r, teal.600, purple.700, blue.700)",
+                transform: "translateY(-1px) scale(1.00)"
+              }}
+              boxShadow="md"
+              transition="all 0.25s cubic-bezier(.08,.52,.52,1)"
               borderRadius="md"
             >
-              Create Collection
+              Create
             </Button>
           </Flex>
         </ModalFooter>

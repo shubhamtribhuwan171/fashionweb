@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -24,53 +24,69 @@ import {
   InputGroup,
   InputLeftElement,
   Icon,
+  useToast,
+  Flex,
+  AspectRatio,
 } from '@chakra-ui/react';
 import { FiSearch } from 'react-icons/fi';
-// Correct import path
-import { getMockAccessories } from '../../data/mockData'; 
+import axios from 'axios';
 
-const AccessoryCard = ({ accessory, onSelect, isSelected }) => {
+// TODO: Move to config
+const API_BASE_URL = 'https://productmarketing-ai-f0e989e4e1ad.herokuapp.com';
+
+// TODO: Replace with actual workspace ID from context/state management
+const getMockWorkspaceId = () => '95d29ad4-47fa-48ee-85cb-cbf762eb400a';
+
+// Define accessory categories (match API documentation)
+const ACCESSORY_CATEGORIES = ['hats', 'bags', 'jewelry', 'shoes', 'scarves', 'other'];
+
+// Card component specifically for multi-selection within the modal
+const SelectableAccessoryCard = ({ accessory, onSelect, isSelected }) => {
   const cardBg = useColorModeValue('white', 'gray.700');
   const selectedBorderColor = useColorModeValue('blue.500', 'blue.300');
+  const imageUrl = accessory.storage_url || 'https://via.placeholder.com/120?text=Acc';
 
   return (
     <Box
-      borderWidth="1px"
+      borderWidth={isSelected ? "2px" : "1px"}
       borderRadius="lg"
       overflow="hidden"
       bg={cardBg}
-      p={4}
       cursor="pointer"
-      onClick={() => onSelect(accessory.id, !isSelected)} // Pass ID and new state
+      onClick={() => onSelect(accessory.id, !isSelected)}
       borderColor={isSelected ? selectedBorderColor : 'transparent'}
-      boxShadow={isSelected ? 'outline' : 'md'}
-      transition="all 0.2s"
-      _hover={{ transform: 'scale(1.03)', shadow: 'lg' }}
-      position="relative" // Needed for checkbox positioning
+      boxShadow={isSelected ? 'outline' : 'sm'}
+      transition="all 0.2s ease-in-out"
+      _hover={{ shadow: 'md', borderColor: isSelected ? selectedBorderColor : 'gray.300' }}
+      position="relative"
     >
-      <Checkbox
-        isChecked={isSelected}
+       <Checkbox
         position="absolute"
-        top={2}
-        right={2}
-        colorScheme="blue"
+        top={1}
+        right={1}
+        isChecked={isSelected}
         onChange={(e) => {
-            e.stopPropagation(); // Prevent card click when checkbox is clicked
+            e.stopPropagation(); // Prevent card click
             onSelect(accessory.id, e.target.checked);
         }}
-        aria-label={`Select ${accessory.name}`}
+        colorScheme="blue"
+        size="lg"
+        aria-label={`Select ${accessory.name || 'accessory'}`}
       />
-      <Image src={accessory.imageUrl} alt={accessory.name} borderRadius="md" mb={3} objectFit="cover" boxSize="120px" mx="auto" />
-      <VStack align="start" spacing={1}>
-        <Text fontWeight="bold" fontSize="md">{accessory.name}</Text>
-        {/* Display relevant details if available */}
-        {/* <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.400')}>
-          Category: {accessory.category}
-        </Text>
-        <HStack spacing={1} wrap="wrap">
-            {accessory.tags?.map(tag => <Tag size="sm" key={tag} colorScheme="purple">{tag}</Tag>)} 
-        </HStack> */}
-      </VStack>
+      <AspectRatio ratio={1}>
+        <Box p={2}> {/* Padding around image */} 
+            <Image 
+                src={imageUrl} 
+                alt={accessory.name || 'Accessory'} 
+                objectFit="contain" // Use contain for accessories 
+                boxSize="100%" // Let AspectRatio control size
+            />
+        </Box>
+      </AspectRatio>
+      <Box p={2} textAlign="center">
+        <Text fontSize="xs" fontWeight="medium" noOfLines={1}>{accessory.name || 'Untitled'}</Text>
+        <Tag size="xs" colorScheme="cyan" mt={1}>{accessory.category}</Tag>
+      </Box>
     </Box>
   );
 };
@@ -81,41 +97,68 @@ const AccessorySelectionModal = ({ isOpen, onClose, onSelectAccessories, initial
   const [error, setError] = useState(null);
   const [selectedAccessoryIds, setSelectedAccessoryIds] = useState(new Set(initialSelectedIds));
   const [searchTerm, setSearchTerm] = useState('');
-
-  // Filters (placeholder)
-  // const [categoryFilter, setCategoryFilter] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const toast = useToast();
+  const currentWorkspaceId = getMockWorkspaceId();
 
   const bgColor = useColorModeValue('gray.50', 'gray.800');
   const headerBg = useColorModeValue('white', 'gray.800');
   const footerBg = useColorModeValue('white', 'gray.800');
 
-  useEffect(() => {
-    const fetchAccessories = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const fetchedAccessories = await getMockAccessories();
-        setAccessories(fetchedAccessories || []); // Ensure array
-      } catch (err) {
-        console.error("Error fetching accessories:", err);
-        setError('Failed to load accessories.');
-        setAccessories([]); // Clear on error
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (isOpen) {
-        fetchAccessories();
-        setSelectedAccessoryIds(new Set(initialSelectedIds)); // Reset selection based on prop when modal opens
+  const getAuthConfig = useCallback(() => {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+        toast({ title: "Authentication Error", description: "Please log in.", status: "error" });
+        return null;
     }
-  }, [isOpen, initialSelectedIds]);
+    return { headers: { Authorization: `Bearer ${token}` } };
+  }, [toast]);
 
-  // Placeholder filter logic
+  const fetchAccessoriesForModal = useCallback(async (category = '') => {
+    setIsLoading(true);
+    setError(null);
+    const config = getAuthConfig();
+    if (!currentWorkspaceId || !config) {
+      setError("Workspace ID or Authentication missing.");
+      setIsLoading(false);
+      setAccessories([]);
+      return;
+    }
+
+    const params = { workspaceId: currentWorkspaceId };
+    if (category) {
+      params.category = category;
+    }
+
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/accessory-images`, {
+        ...config,
+        params
+      });
+      setAccessories(response.data || []);
+    } catch (err) {
+      console.error("Error fetching accessories for modal:", err);
+      const errorMsg = err.response?.data?.message || "Failed to load accessories";
+      setError(errorMsg);
+      setAccessories([]);
+      toast({ title: "Error Loading Accessories", description: errorMsg, status: "error", duration: 3000 });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentWorkspaceId, getAuthConfig, toast]);
+
+  useEffect(() => {
+    if (isOpen) {
+        fetchAccessoriesForModal(filterCategory);
+    }
+  }, [isOpen, initialSelectedIds, fetchAccessoriesForModal, filterCategory]);
+
   const filteredAccessories = useMemo(() => {
-    // Add filter logic here
-    return accessories.filter(acc => acc.name.toLowerCase().includes(searchTerm.toLowerCase()));
-  }, [accessories, searchTerm]);
+    return accessories.filter(acc => 
+        (acc.name || 'Untitled').toLowerCase().includes(searchTerm.toLowerCase()) &&
+        (!filterCategory || acc.category === filterCategory)
+    );
+  }, [accessories, searchTerm, filterCategory]);
 
   const handleSelect = (accessoryId, shouldSelect) => {
       setSelectedAccessoryIds(prevIds => {
@@ -132,14 +175,14 @@ const AccessorySelectionModal = ({ isOpen, onClose, onSelectAccessories, initial
   const handleConfirmSelection = () => {
       const selectedIdsArray = Array.from(selectedAccessoryIds);
       const selectedFullAccessories = accessories.filter(acc => selectedIdsArray.includes(acc.id));
-      onSelectAccessories(selectedFullAccessories); // Pass array of selected accessory objects
+      onSelectAccessories(selectedFullAccessories);
       onClose();
-  };
+  }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="3xl" scrollBehavior="inside" isCentered>
+    <Modal isOpen={isOpen} onClose={onClose} size="4xl" scrollBehavior="inside" isCentered>
       <ModalOverlay />
-      <ModalContent borderRadius="xl">
+      <ModalContent borderRadius="xl" maxH="85vh">
         <ModalHeader 
           fontSize="lg" 
           fontWeight="semibold"
@@ -147,33 +190,44 @@ const AccessorySelectionModal = ({ isOpen, onClose, onSelectAccessories, initial
           borderColor="gray.100"
           py={4} px={6}
         >
-          Select Accessory
+          Select Accessories
         </ModalHeader>
         <ModalCloseButton top={4} right={4} />
-        <ModalBody pt={4} pb={6} px={6}>
-           <InputGroup mb={5}>
-                <InputLeftElement pointerEvents="none">
-                    <Icon as={FiSearch} color="gray.400" />
-                </InputLeftElement>
-                <Input 
-                    placeholder="Search accessories..." 
-                    value={searchTerm} 
-                    onChange={(e) => setSearchTerm(e.target.value)} 
-                    borderRadius="md"
-                />
-           </InputGroup>
+        <ModalBody pt={4} pb={6} px={6} overflowY="auto">
+          <Flex mb={5} gap={4} wrap="wrap">
+               <InputGroup flex={1} minW="200px">
+                    <InputLeftElement pointerEvents="none">
+                        <Icon as={FiSearch} color="gray.400" />
+                    </InputLeftElement>
+                    <Input 
+                        placeholder="Search accessories by name..." 
+                        value={searchTerm} 
+                        onChange={(e) => setSearchTerm(e.target.value)} 
+                        borderRadius="md"
+                    />
+               </InputGroup>
+               <Select 
+                  placeholder="Filter by Category" 
+                  value={filterCategory}
+                  onChange={(e) => setFilterCategory(e.target.value)}
+                  borderRadius="md"
+                  maxW="200px"
+                >
+                  <option value="">All Categories</option>
+                  {ACCESSORY_CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+                  ))}
+                </Select>
+           </Flex>
+
           {isLoading ? (
-            <Center py={5}>
-              <Spinner size="xl" />
-            </Center>
+            <Center py={5}><Spinner size="xl" /></Center>
           ) : error ? (
-             <Center py={5}>
-               <Text color="red.500">{error}</Text>
-             </Center>
+             <Center py={5}><Text color="red.500">{error}</Text></Center>
           ) : filteredAccessories.length > 0 ? (
-            <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={5}>
+            <SimpleGrid columns={{ base: 2, sm: 3, md: 4, lg: 5 }} spacing={4}>
               {filteredAccessories.map((acc) => (
-                <AccessoryCard
+                <SelectableAccessoryCard
                   key={acc.id}
                   accessory={acc}
                   onSelect={handleSelect}
@@ -182,7 +236,13 @@ const AccessorySelectionModal = ({ isOpen, onClose, onSelectAccessories, initial
               ))}
             </SimpleGrid>
           ) : (
-             <Center py={5}><Text>No items found{searchTerm ? ' matching "' + searchTerm + '"' : ''}.</Text></Center>
+             <Center py={5}>
+                 <Text>
+                    No accessories found
+                    {searchTerm ? ` matching "${searchTerm}"` : ''}
+                    {filterCategory ? ` in category "${filterCategory}"` : ''}.
+                 </Text>
+             </Center>
           )}
         </ModalBody>
         <ModalFooter borderTopWidth="1px" bg={footerBg}>
@@ -190,8 +250,11 @@ const AccessorySelectionModal = ({ isOpen, onClose, onSelectAccessories, initial
             {selectedAccessoryIds.size} selected
           </Text>
           <Button variant="ghost" mr={3} onClick={onClose}>Cancel</Button>
-          <Button colorScheme="blue" onClick={handleConfirmSelection}>
-            Confirm Selection
+          <Button 
+            colorScheme="purple"
+            onClick={handleConfirmSelection}
+          >
+            Confirm Selection ({selectedAccessoryIds.length})
           </Button>
         </ModalFooter>
       </ModalContent>

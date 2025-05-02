@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -18,12 +18,17 @@ import {
   VStack,
   Flex,
 } from '@chakra-ui/react';
+import axios from 'axios';
 
-export default function RenameCollectionModal({ isOpen, onClose, collection, onRenameCollection }) {
+// TODO: Move to config
+const API_BASE_URL = 'https://productmarketing-ai-f0e989e4e1ad.herokuapp.com';
+
+export default function RenameCollectionModal({ isOpen, onClose, collection, onRenameSuccess }) {
   const toast = useToast();
   const [name, setName] = useState('');
   const [isPublic, setIsPublic] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (collection) {
@@ -33,7 +38,19 @@ export default function RenameCollectionModal({ isOpen, onClose, collection, onR
       setName('');
       setIsPublic(false);
     }
+    setError(null);
   }, [collection, isOpen]);
+
+  const getAuthConfig = useCallback(() => {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+        toast({ title: "Authentication Error", description: "Please log in again.", status: "error" });
+        setError("Authentication token not found.");
+        return null;
+    }
+    setError(null);
+    return { headers: { Authorization: `Bearer ${token}` } };
+  }, [toast]);
 
   const handleSave = async () => {
     const trimmedName = name.trim();
@@ -48,15 +65,31 @@ export default function RenameCollectionModal({ isOpen, onClose, collection, onR
     }
     
     setIsLoading(true);
-    console.log(`Renaming collection ${collection?.id} to: ${trimmedName}, public: ${isPublic}`);
+    setError(null);
+    const config = getAuthConfig();
+    if (!config || !collection?.id) {
+        setError("Cannot update: Missing auth or collection ID.");
+        setIsLoading(false);
+        return;
+    }
+
+    console.log(`API: Updating collection ${collection.id} to: ${trimmedName}, public: ${isPublic}`);
+    const payload = { name: trimmedName, is_public: isPublic };
     
     try {
-        await onRenameCollection(collection.id, { name: trimmedName, is_public: isPublic });
+        const response = await axios.put(`${API_BASE_URL}/api/collections/${collection.id}`, payload, config);
+        
         toast({ title: "Collection updated!", status: "success", duration: 2000 });
+        if (onRenameSuccess) {
+            await onRenameSuccess(collection.id, response.data);
+        }
         handleClose();
-    } catch (error) {
-        console.error("Failed to rename collection (from modal perspective):", error);
-        toast({ title: "Failed to update collection", status: "error", duration: 3000 });
+
+    } catch (err) {
+        console.error("Failed to rename collection:", err);
+        const errorMsg = err.response?.data?.message || "Failed to update collection";
+        setError(errorMsg);
+        toast({ title: "Update Failed", description: errorMsg, status: "error", duration: 3000 });
     } finally {
         setIsLoading(false);
     }
@@ -68,6 +101,7 @@ export default function RenameCollectionModal({ isOpen, onClose, collection, onR
          setIsPublic(collection.is_public || false);
       }
       setIsLoading(false);
+      setError(null);
       onClose();
   }
 
@@ -107,6 +141,10 @@ export default function RenameCollectionModal({ isOpen, onClose, collection, onR
                   colorScheme="blue"
                 />
             </FormControl>
+
+            {error && (
+                 <Text color="red.500" fontSize="sm" mt={2}>Error: {error}</Text>
+            )}
           </VStack>
         </ModalBody>
 
@@ -120,11 +158,23 @@ export default function RenameCollectionModal({ isOpen, onClose, collection, onR
               Cancel
             </Button>
             <Button 
-              colorScheme="blue" 
-              onClick={handleSave} 
+              onClick={handleSave}
               isLoading={isLoading}
-              isDisabled={isLoading || !name.trim() || (name.trim() === collection?.name && isPublic === collection?.is_public)} 
-              loadingText="Saving..."
+              isDisabled={isLoading || !name.trim() || (name.trim() === collection?.name && isPublic === collection?.is_public)}
+              bgGradient="linear(to-r, teal.400, purple.500, blue.500)"
+              color="white"
+              fontWeight="semibold"
+              _hover={{
+                bgGradient: "linear(to-r, teal.500, purple.600, blue.600)",
+                boxShadow: "lg",
+                transform: "translateY(-3px) scale(1.03)",
+              }}
+              _active={{
+                bgGradient: "linear(to-r, teal.600, purple.700, blue.700)",
+                transform: "translateY(-1px) scale(1.00)"
+              }}
+              boxShadow="md"
+              transition="all 0.25s cubic-bezier(.08,.52,.52,1)"
               borderRadius="md"
             >
               Save Changes

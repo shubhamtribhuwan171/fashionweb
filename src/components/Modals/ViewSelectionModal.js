@@ -193,11 +193,11 @@ function ViewSelectionModal({ isOpen, onClose, onSelectViews, initialSelectedIds
             Cancel
           </Button>
           <Button
-            colorScheme="blue"
+            colorScheme="purple"
             onClick={handleConfirmSelection}
             isDisabled={selectedViewIds.size === 0} // Disable if none selected
             >
-            Confirm Selection
+            Confirm Views ({selectedViewIds.size})
           </Button>
         </ModalFooter>
       </ModalContent>

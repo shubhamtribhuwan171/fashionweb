@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -17,6 +17,7 @@ import {
   Icon,
   Image,
   useRadio,
+  ModalFooter,
 } from '@chakra-ui/react';
 import { FiSearch } from 'react-icons/fi';
 
@@ -64,11 +65,25 @@ const mockPoses = [ // Example mock data
 export default function PoseSelectionModal({ isOpen, onClose, onSelectPose }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [items, setItems] = useState(mockPoses); // Use state for potential fetching
+  const [selectedPoseInternal, setSelectedPoseInternal] = useState(null); // Added state
   const loading = false; // Placeholder
 
+  useEffect(() => {
+    if (isOpen) {
+        setSelectedPoseInternal(null); // Reset internal selection
+    }
+  }, [isOpen]);
+
   const handleSelect = (item) => {
-    onSelectPose(item);
+    setSelectedPoseInternal(item); // Update internal state
+    // Do not call onSelectPose or onClose here
+  };
+
+  const handleConfirmSelection = () => {
+    if (selectedPoseInternal) {
+        onSelectPose(selectedPoseInternal); // Pass selected item back
     onClose(); 
+    }
   };
 
   const filteredItems = items.filter(item => 
@@ -107,7 +122,19 @@ export default function PoseSelectionModal({ isOpen, onClose, onSelectPose }) {
             <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={5}> 
               {/* Replace with actual card component and mapping */}
               {filteredItems.map((item) => (
-                <Box key={item.id} p={4} borderWidth="1px" borderRadius="md" _hover={{ shadow: 'md' }} cursor="pointer" onClick={() => handleSelect(item)} textAlign="center">
+                <Box 
+                  key={item.id} 
+                  p={4} 
+                  borderWidth="1px" 
+                  borderRadius="md" 
+                  _hover={{ shadow: 'md' }} 
+                  cursor="pointer" 
+                  onClick={() => handleSelect(item)} // Use internal handler
+                  textAlign="center"
+                  // Add visual selection state
+                  borderColor={selectedPoseInternal?.id === item.id ? 'blue.400' : 'transparent'}
+                  boxShadow={selectedPoseInternal?.id === item.id ? 'outline' : 'md'}
+                >
                   {item.name} 
                 </Box>
               ))}
@@ -116,7 +143,16 @@ export default function PoseSelectionModal({ isOpen, onClose, onSelectPose }) {
              <Center py={5}><Text>No items found{searchTerm ? ' matching "' + searchTerm + '"' : ''}.</Text></Center>
           )}
         </ModalBody>
-        {/* No Footer needed for simple selection */}
+        <ModalFooter>
+          <Button variant="ghost" mr={3} onClick={onClose}>Cancel</Button>
+          <Button 
+            colorScheme="purple"
+            onClick={handleConfirmSelection} // Use confirmation handler
+            isDisabled={!selectedPoseInternal} // Check internal state
+          >
+            Select Pose
+          </Button>
+        </ModalFooter>
       </ModalContent>
     </Modal>
   );

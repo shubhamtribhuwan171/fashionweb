@@ -20,10 +20,14 @@ import {
   BreadcrumbLink,
   Icon,
   AspectRatio,
+  useToast,
 } from '@chakra-ui/react';
 import { FaArrowLeft, FaPaintBrush, FaChevronRight } from 'react-icons/fa';
 // Corrected relative import path
 import { getMockProductById } from '../data/mockData'; 
+import axios from 'axios'; 
+
+const API_BASE_URL = 'https://productmarketing-ai-f0e989e4e1ad.herokuapp.com';
 
 export default function GarmentDetailPage() {
   const { garmentId } = useParams();
@@ -31,30 +35,59 @@ export default function GarmentDetailPage() {
   const [product, setProduct] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const toast = useToast();
 
   // Theme colors
   const cardBgColor = useColorModeValue('white', 'gray.700');
   const textColor = useColorModeValue('gray.600', 'gray.400');
   const headingColor = useColorModeValue('gray.800', 'white');
 
-  // Use useCallback for the fetch function
+  // --- Define getAuthConfig first --- 
+  const getAuthConfig = useCallback(() => {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+        toast({ title: "Authentication Error", description: "Please log in.", status: "error" });
+        return null;
+    }
+    return { headers: { Authorization: `Bearer ${token}` } };
+  }, [toast]);
+
+  // --- Define fetchProductDetails after getAuthConfig --- 
   const fetchProductDetails = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    const config = getAuthConfig(); // Now defined
+    if (!config) {
+      setError('Authentication required. Please log in.');
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      const data = await getMockProductById(garmentId);
-      if (data) {
-        setProduct(data);
+      console.log(`Fetching garment details for ID: ${garmentId}`); // Log Start
+      const response = await axios.get(`${API_BASE_URL}/api/products/${garmentId}`, config);
+      
+      // --- Add Logging Here --- 
+      console.log('>>> API Response Data:', response.data);
+      // Check if response.data is null or undefined before setting state
+      if (response.data) {
+           console.log('Setting garment state with received data.');
+           setProduct(response.data);
       } else {
-        setError('Product not found');
+          console.error('API returned null or undefined data for garment.');
+          setError('Failed to load garment details: No data received.');
+          setProduct(null); // Ensure garment state is null if data is bad
       }
+      // --- End Logging ---
+
     } catch (err) {
-      console.error("Error fetching product:", err);
-      setError(err.message || 'Failed to load product');
+      console.error("Error fetching garment:", err);
+      setError(err.response?.data?.message || 'Failed to load garment details');
+      setProduct(null); // Ensure garment state is null on error
     } finally {
       setIsLoading(false);
     }
-  }, [garmentId]);
+  }, [garmentId, getAuthConfig]);
 
   useEffect(() => {
     fetchProductDetails();
@@ -63,8 +96,8 @@ export default function GarmentDetailPage() {
   const handleUseForStyle = () => {
     if (!product) return;
     console.log('Navigating to create style with garment:', product.id);
-    // Navigate to the create style page using the correct path
-    navigate('/app/create-style', { state: { preselectedGarmentId: product.id } });
+    // Navigate to the create style page using the correct path and state key
+    navigate('/app/create', { state: { selectedGarmentId: product.id } });
   };
 
   if (isLoading) {
@@ -89,17 +122,20 @@ export default function GarmentDetailPage() {
     return <Center py={10}><Text>Garment data is unavailable.</Text></Center>;
   }
 
+  console.log('Garment State before render:', product); // Log state before render
+
   return (
     <Container maxW="container.xl" py={8}>
         {/* Breadcrumbs & Back Button */}
         <Flex mb={6} justify="space-between" align="center">
             <Breadcrumb spacing="8px" separator={<Icon as={FaChevronRight} color="gray.500" />}>
                 <BreadcrumbItem>
-                  {/* Link back to the correct products list page */}
-                  <BreadcrumbLink as={RouterLink} to="/app/products">Base Garments</BreadcrumbLink>
+                  {/* Link back to the Virtual Closet */}
+                  <BreadcrumbLink as={RouterLink} to="/app/products">Virtual Closet</BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbItem isCurrentPage>
-                  <BreadcrumbLink href="#" isTruncated maxW="300px">{product.name || 'Details'}</BreadcrumbLink>
+                  {/* Refer to it as Apparel Detail maybe? Or keep Name */}
+                  <BreadcrumbLink href="#" isTruncated maxW="300px">{product.name || 'Apparel Detail'}</BreadcrumbLink>
                 </BreadcrumbItem>
             </Breadcrumb>
              <Button 
@@ -116,13 +152,14 @@ export default function GarmentDetailPage() {
         {/* Left Side: Image */}
         <Box flex={{ base: 'none', md: 1 }} bg={cardBgColor} p={4} borderRadius="lg" shadow="md" overflow="hidden" maxW={{md: '400px'}}>
           <AspectRatio ratio={1}>
-            <Image
-              // Use reference_image_url from API/mock data
-              src={product.reference_image_url || 'https://via.placeholder.com/400?text=No+Image'}
-              alt={product.name}
-              objectFit="contain" // Use contain to see the whole image
-              borderRadius="md"
-            />
+            <Box>
+              <Image
+                src={product.reference_image_url || 'https://via.placeholder.com/400?text=No+Image'}
+                alt={product.name}
+                objectFit="contain"
+                borderRadius="md"
+              />
+            </Box>
           </AspectRatio>
         </Box>
 
@@ -143,13 +180,27 @@ export default function GarmentDetailPage() {
 
           {/* Action Buttons */}
           <Button 
-            colorScheme="blue" 
             leftIcon={<FaPaintBrush />} 
             onClick={handleUseForStyle}
             mt={4}
             size="lg"
+            bgGradient="linear(to-r, teal.400, purple.500, blue.500)"
+            color="white"
+            fontWeight="semibold"
+            _hover={{
+              bgGradient: "linear(to-r, teal.500, purple.600, blue.600)",
+              boxShadow: "lg",
+              transform: "translateY(-3px) scale(1.03)",
+            }}
+            _active={{
+              bgGradient: "linear(to-r, teal.600, purple.700, blue.700)",
+              transform: "translateY(-1px) scale(1.00)"
+            }}
+            boxShadow="md"
+            transition="all 0.25s cubic-bezier(.08,.52,.52,1)"
+            borderRadius="md"
           >
-            Visualize with this Garment
+            Visualize with this Apparel
           </Button>
         </VStack>
       </Flex>

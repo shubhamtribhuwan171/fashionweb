@@ -18,70 +18,132 @@ import {
   Center,
   useToast,
   Flex,
+  Skeleton,
+  SkeletonText,
 } from '@chakra-ui/react';
 import { useParams, Link as RouterLink, useNavigate } from 'react-router-dom';
 import { FaChevronRight, FaPencilAlt, FaTrashAlt, FaArrowLeft } from 'react-icons/fa';
+import axios from 'axios';
 import StyleCard from '../components/Styles/StyleCard';
 import RenameCollectionModal from '../components/Modals/RenameCollectionModal';
-import { getMockCollectionById, renameMockCollection, deleteMockCollection } from '../data/mockData';
+
+// TODO: Move to config
+const API_BASE_URL = 'https://productmarketing-ai-f0e989e4e1ad.herokuapp.com';
+
+// Skeleton Card Component (matches StyleCard structure)
+const SkeletonStyleCard = () => (
+  <Box borderWidth="1px" borderRadius="lg" overflow="hidden" p={3}>
+    <Skeleton height="200px" /> {/* Adjust height based on StyleCard image */}
+    <SkeletonText mt="4" noOfLines={2} spacing="4" skeletonHeight="2" />
+  </Box>
+);
 
 export default function CollectionDetailPage() {
   const { collectionId } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
   const [collection, setCollection] = useState(null);
+  const [assets, setAssets] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const { isOpen: isRenameOpen, onOpen: onRenameOpen, onClose: onRenameClose } = useDisclosure();
   const [isDeleting, setIsDeleting] = useState(false);
+  const numSkeletons = 8;
+
+  const getAuthConfig = useCallback(() => {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+        toast({ title: "Authentication Error", description: "Please log in.", status: "error" });
+        return null;
+    }
+    return { headers: { Authorization: `Bearer ${token}` } };
+  }, [toast]);
 
   const fetchCollectionDetails = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    const config = getAuthConfig();
+    if (!config) {
+        setIsLoading(false);
+        return;
+    }
+
     try {
-      const collectionData = await getMockCollectionById(collectionId);
-      if (collectionData) {
-        setCollection(collectionData);
-      } else {
-        setError('Collection not found');
-      }
+      // --- Real API Call --- 
+      const response = await axios.get(`${API_BASE_URL}/api/collections/${collectionId}`, config);
+      setCollection(response.data);
+      setAssets(response.data.assets || []);
     } catch (err) {
       console.error("Error fetching collection details:", err);
-      setError(err.message || 'Failed to load collection');
+      const errorMsg = err.response?.data?.message || 'Failed to load collection';
+      setError(errorMsg);
+      toast({ title: "Error Loading Collection", description: errorMsg, status: "error" });
     } finally {
       setIsLoading(false);
     }
-  }, [collectionId]);
+  }, [collectionId, getAuthConfig]);
 
   useEffect(() => {
     fetchCollectionDetails();
   }, [fetchCollectionDetails]);
 
+  // --- Rename Handler (will call modal's API function) --- 
   const handleRenameSave = async (id, updatedData) => {
-    console.log(`MOCK: Simulating rename for ${id} with data:`, updatedData);
-    return new Promise(async (resolve, reject) => {
-      try {
-        const updatedCollection = await renameMockCollection(id, updatedData);
-        setCollection(updatedCollection);
-        resolve();
-      } catch (err) {
-        console.error("Rename failed:", err);
-        reject(err);
-      }
-    });
+    // This function is called by RenameCollectionModal after its successful API call
+    // We just need to update the state here
+    console.log("Updating collection state after successful rename:", updatedData);
+    setCollection(prev => prev ? { ...prev, ...updatedData } : null);
+    // Optionally, could refetch: fetchCollectionDetails();
+    return Promise.resolve(); // Signal success back to modal
   };
 
+  // --- Delete Collection Handler --- 
   const handleDeleteCollection = async () => {
-    setIsDeleting(true);
+    const config = getAuthConfig();
+    if (!config) return;
+    
+    if (window.confirm("Are you sure you want to delete this collection?")) {
+        setIsDeleting(true);
+        try {
+            // --- Real API Call --- 
+            await axios.delete(`${API_BASE_URL}/api/collections/${collectionId}`, config);
+            toast({ title: "Collection deleted", status: "success", duration: 2000 });
+            navigate('/app/collections', { replace: true });
+        } catch (error) {
+            console.error("Delete failed:", error);
+            const errorMsg = error.response?.data?.message || "Failed to delete collection";
+            toast({ title: "Failed to delete collection", description: errorMsg, status: "error", duration: 3000 });
+            setIsDeleting(false);
+        }
+        // No finally needed as we navigate away on success
+    }
+  };
+
+  // --- Remove Asset from Collection Handler --- 
+  const handleRemoveAsset = async (assetIdToRemove) => {
+    const config = getAuthConfig();
+    if (!config || !collectionId || !assetIdToRemove) {
+      toast({ title: "Cannot remove item", description: "Missing auth or IDs.", status: "error" });
+      return;
+    }
+
+    // Optional confirmation
+    // if (!window.confirm('Are you sure you want to remove this item from the collection?')) return;
+
     try {
-      await deleteMockCollection(collectionId);
-      toast({ title: "Collection deleted", status: "success", duration: 2000 });
-      navigate('/app/collections', { replace: true });
+      console.log(`API: Removing asset ${assetIdToRemove} from collection ${collectionId}`);
+      // --- Real API Call --- 
+      await axios.delete(`${API_BASE_URL}/api/collections/${collectionId}/items/${assetIdToRemove}`, config);
+      
+      // Update state locally for immediate feedback
+      setAssets(prev => prev.filter(asset => asset.id !== assetIdToRemove));
+      toast({ title: "Item removed", status: "success", duration: 1500 });
+
     } catch (error) {
-      console.error("Delete failed:", error);
-      toast({ title: "Failed to delete collection", status: "error", duration: 3000 });
-      setIsDeleting(false);
+      console.error("Failed to remove item from collection:", error);
+      const errorMsg = error.response?.data?.message || "Could not remove item.";
+      toast({ title: "Removal Failed", description: errorMsg, status: "error", duration: 3000 });
     }
   };
 
@@ -108,8 +170,6 @@ export default function CollectionDetailPage() {
   if (!collection) {
     return <Center py={10}><Text>Collection not found.</Text></Center>;
   }
-
-  const assets = collection.assets || [];
 
   return (
     <VStack spacing={6} align="stretch">
@@ -143,24 +203,44 @@ export default function CollectionDetailPage() {
           </Button>
           <Button
             leftIcon={<FaTrashAlt />}
-            colorScheme="red"
-            variant="outline"
             size="sm"
             onClick={handleDeleteCollection}
             isLoading={isDeleting}
             loadingText="Deleting..."
+            bgGradient="linear(to-r, red.500, orange.500)"
+            color="white"
+            fontWeight="semibold"
+            _hover={{
+              bgGradient: "linear(to-r, red.600, orange.600)",
+              boxShadow: "lg",
+              transform: "translateY(-3px) scale(1.03)",
+            }}
+            _active={{
+              bgGradient: "linear(to-r, red.700, orange.700)",
+              transform: "translateY(-1px) scale(1.00)"
+            }}
+            boxShadow="md"
+            transition="all 0.25s cubic-bezier(.08,.52,.52,1)"
+            borderRadius="md"
           >
             Delete
           </Button>
         </HStack>
       </HStack>
 
-      {assets.length > 0 ? (
+      {isLoading ? (
+        <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={6}>
+          {Array.from({ length: numSkeletons }).map((_, index) => (
+            <SkeletonStyleCard key={index} />
+          ))}
+        </SimpleGrid>
+      ) : assets.length > 0 ? (
         <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={6}>
           {assets.map((style) => (
             <StyleCard
               key={style.id}
               style={style}
+              onRemoveFromCollection={() => handleRemoveAsset(style.id)}
             />
           ))}
         </SimpleGrid>
@@ -174,7 +254,7 @@ export default function CollectionDetailPage() {
         isOpen={isRenameOpen}
         onClose={onRenameClose}
         collection={collection}
-        onRenameCollection={handleRenameSave}
+        onRenameSuccess={handleRenameSave}
       />
     </VStack>
   );

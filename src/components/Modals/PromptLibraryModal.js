@@ -21,6 +21,7 @@ import {
   Tooltip,
   IconButton,
   Flex,
+  ModalFooter,
 } from '@chakra-ui/react';
 import { FiSearch, FiCopy } from 'react-icons/fi';
 import { getMockPromptExamples } from '../../data/mockData';
@@ -52,7 +53,7 @@ function PromptCard({ prompt, onSelect }) {
             mr={2}
           />
         </Tooltip>
-        <Button size="xs" colorScheme="blue" variant="outline" onClick={() => onSelect(prompt)}>
+        <Button size="xs" colorScheme="purple" variant="outline" onClick={() => onSelect(prompt)}>
           Use Prompt
         </Button>
       </Flex>
@@ -64,6 +65,7 @@ export default function PromptLibraryModal({ isOpen, onClose, onSelectPrompt }) 
   const [searchTerm, setSearchTerm] = useState('');
   const [examples, setExamples] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [selectedPromptInternal, setSelectedPromptInternal] = useState(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -73,12 +75,19 @@ export default function PromptLibraryModal({ isOpen, onClose, onSelectPrompt }) 
         .then(data => setExamples(data || []))
         .catch(err => console.error("Error fetching prompts:", err))
         .finally(() => setLoading(false));
+      setSelectedPromptInternal(null);
     }
   }, [isOpen]);
 
-  const handleSelect = (prompt) => {
-    onSelectPrompt(prompt);
+  const handleInternalSelect = (prompt) => {
+    setSelectedPromptInternal(prompt);
+  };
+
+  const handleConfirmSelection = () => {
+    if (selectedPromptInternal) {
+      onSelectPrompt(selectedPromptInternal);
     onClose();
+    }
   };
 
   const filteredExamples = examples.filter(p =>
@@ -117,13 +126,23 @@ export default function PromptLibraryModal({ isOpen, onClose, onSelectPrompt }) 
           ) : filteredExamples.length > 0 ? (
             <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={5}>
               {filteredExamples.map((example) => (
-                <PromptCard key={example.id} prompt={example} onSelect={handleSelect} />
+                <PromptCard key={example.id} prompt={example} onSelect={handleInternalSelect} />
               ))}
             </SimpleGrid>
           ) : (
             <Center py={10}><Text>No prompts found{searchTerm ? ' matching "' + searchTerm + '"' : ''}.</Text></Center>
           )}
         </ModalBody>
+        <ModalFooter>
+          <Button variant="ghost" mr={3} onClick={onClose}>Cancel</Button>
+          <Button 
+            colorScheme="purple"
+            onClick={handleConfirmSelection}
+            isDisabled={!selectedPromptInternal}
+          >
+            Select Prompt
+          </Button>
+        </ModalFooter>
       </ModalContent>
     </Modal>
   );

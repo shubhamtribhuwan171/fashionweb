@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -23,43 +23,18 @@ import {
   InputGroup,
   InputLeftElement,
   Icon,
+  useToast,
+  AspectRatio,
 } from '@chakra-ui/react';
 import { FiSearch } from 'react-icons/fi';
-// Correct import path
-import { getMockModels } from '../../data/mockData';
+import axios from 'axios';
+import ModelCard from '../../components/Models/ModelCard';
 
-const ModelCard = ({ model, onSelect, isSelected }) => {
-  const cardBg = useColorModeValue('white', 'gray.700');
-  const selectedBorderColor = useColorModeValue('blue.500', 'blue.300');
+// TODO: Move to config
+const API_BASE_URL = 'https://productmarketing-ai-f0e989e4e1ad.herokuapp.com';
 
-  return (
-    <Box
-      borderWidth="1px"
-      borderRadius="lg"
-      overflow="hidden"
-      bg={cardBg}
-      p={4}
-      cursor="pointer"
-      onClick={() => onSelect(model)}
-      borderColor={isSelected ? selectedBorderColor : 'transparent'}
-      boxShadow={isSelected ? 'outline' : 'md'}
-      transition="all 0.2s"
-      _hover={{ transform: 'scale(1.03)', shadow: 'lg' }}
-    >
-      <Image src={model.imageUrl} alt={model.name} borderRadius="md" mb={3} objectFit="cover" boxSize="150px" mx="auto" />
-      <VStack align="start" spacing={1}>
-        <Text fontWeight="bold" fontSize="lg">{model.name}</Text>
-        {/* Display relevant details from mock if available */}
-        {/* <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.400')}>
-          Age: {model.age} | Ethnicity: {model.ethnicity}
-        </Text> */}
-        {/* <HStack spacing={1} wrap="wrap">
-            {model.tags?.map(tag => <Tag size="sm" key={tag} colorScheme="teal">{tag}</Tag>)} 
-        </HStack> */}
-      </VStack>
-    </Box>
-  );
-};
+// TODO: Replace with actual workspace ID from context/state management
+const getMockWorkspaceId = () => '95d29ad4-47fa-48ee-85cb-cbf762eb400a';
 
 const ModelSelectionModal = ({ isOpen, onClose, onSelectModel }) => {
   const [models, setModels] = useState([]);
@@ -67,6 +42,8 @@ const ModelSelectionModal = ({ isOpen, onClose, onSelectModel }) => {
   const [error, setError] = useState(null);
   const [selectedModelInternal, setSelectedModelInternal] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const toast = useToast();
+  const currentWorkspaceId = getMockWorkspaceId();
 
   // Filters (placeholders, add state if needed)
   // const [ethnicityFilter, setEthnicityFilter] = useState('');
@@ -76,35 +53,55 @@ const ModelSelectionModal = ({ isOpen, onClose, onSelectModel }) => {
   const headerBg = useColorModeValue('white', 'gray.800');
   const footerBg = useColorModeValue('white', 'gray.800');
 
-  useEffect(() => {
-    const fetchModels = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const fetchedModels = await getMockModels();
-        setModels(fetchedModels || []); // Ensure it's an array
-      } catch (err) {
-        console.error("Error fetching models:", err);
-        setError('Failed to load models.');
-        setModels([]); // Clear on error
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (isOpen) {
-        fetchModels();
-        setSelectedModelInternal(null); // Reset selection when modal opens
+  const getAuthConfig = useCallback(() => {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+        toast({ title: "Authentication Error", description: "Please log in.", status: "error" });
+        return null;
     }
-  }, [isOpen]);
+    return { headers: { Authorization: `Bearer ${token}` } };
+  }, [toast]);
 
-  // Placeholder filter logic
+  const fetchModelsForModal = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    const config = getAuthConfig();
+    if (!currentWorkspaceId || !config) {
+        setError("Workspace ID or Authentication missing.");
+        setIsLoading(false);
+        setModels([]);
+        return;
+    }
+
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/model-images`, {
+        ...config,
+        params: { workspaceId: currentWorkspaceId }
+      });
+      setModels(response.data || []);
+    } catch (err) {
+      console.error("Error fetching models for modal:", err);
+      const errorMsg = err.response?.data?.message || "Failed to load models";
+      setError(errorMsg);
+      setModels([]);
+      toast({ title: "Error Loading Models", description: errorMsg, status: "error", duration: 3000 });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentWorkspaceId, getAuthConfig, toast]);
+
+  useEffect(() => {
+    if (isOpen) {
+        fetchModelsForModal();
+        setSelectedModelInternal(null);
+    }
+  }, [isOpen, fetchModelsForModal]);
+
   const filteredModels = useMemo(() => {
-    // Add filtering logic here based on state variables like ethnicityFilter, ageFilter
     return models.filter(model => 
-      model.name.toLowerCase().includes(searchTerm.toLowerCase())
+      (model.name || 'Untitled Model').toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [models, searchTerm]); // Add filter states to dependency array if implemented
+  }, [models, searchTerm]); 
 
   const handleSelect = (model) => {
       setSelectedModelInternal(model);
@@ -115,6 +112,40 @@ const ModelSelectionModal = ({ isOpen, onClose, onSelectModel }) => {
         onSelectModel(selectedModelInternal);
         onClose();
     }
+  };
+
+  const SelectableModelCard = ({ model, onSelect, isSelected }) => {
+    const cardBg = useColorModeValue('white', 'gray.700');
+    const selectedBorderColor = useColorModeValue('blue.500', 'blue.300');
+    const imageUrl = model.storage_url || 'https://via.placeholder.com/150?text=Model';
+
+    return (
+      <Box
+        borderWidth={isSelected ? "2px" : "1px"}
+        borderRadius="lg"
+        overflow="hidden"
+        bg={cardBg}
+        cursor="pointer"
+        onClick={() => onSelect(model)}
+        borderColor={isSelected ? selectedBorderColor : 'transparent'}
+        boxShadow={isSelected ? 'outline' : 'sm'}
+        transition="all 0.2s ease-in-out"
+        _hover={{ shadow: 'md', borderColor: isSelected ? selectedBorderColor : 'gray.300' }}
+      >
+        <AspectRatio ratio={1}>
+           <Box>
+            <Image 
+              src={imageUrl} 
+              alt={model.name || 'Model'} 
+              objectFit="cover" 
+            />
+           </Box>
+        </AspectRatio>
+        <Box p={2} textAlign="center">
+          <Text fontSize="xs" fontWeight="medium" noOfLines={1}>{model.name || 'Untitled Model'}</Text>
+        </Box>
+      </Box>
+    );
   };
 
   return (
@@ -137,24 +168,20 @@ const ModelSelectionModal = ({ isOpen, onClose, onSelectModel }) => {
                     <Icon as={FiSearch} color="gray.400" />
                 </InputLeftElement>
                 <Input 
-                    placeholder="Search models..." 
+                    placeholder="Search models by name..." 
                     value={searchTerm} 
                     onChange={(e) => setSearchTerm(e.target.value)} 
                     borderRadius="md"
                 />
            </InputGroup>
           {isLoading ? (
-            <Center py={5}>
-              <Spinner size="xl" />
-            </Center>
+            <Center py={5}><Spinner size="xl" /></Center>
           ) : error ? (
-             <Center py={5}>
-               <Text color="red.500">{error}</Text>
-             </Center>
+             <Center py={5}><Text color="red.500">{error}</Text></Center>
           ) : filteredModels.length > 0 ? (
-            <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={5}>
+            <SimpleGrid columns={{ base: 2, sm: 3, md: 4, lg: 5 }} spacing={4}> 
               {filteredModels.map((model) => (
-                <ModelCard
+                <SelectableModelCard
                   key={model.id}
                   model={model}
                   onSelect={handleSelect}
@@ -163,13 +190,17 @@ const ModelSelectionModal = ({ isOpen, onClose, onSelectModel }) => {
               ))}
             </SimpleGrid>
           ) : (
-             <Center py={5}><Text>No items found{searchTerm ? ' matching "' + searchTerm + '"' : ''}.</Text></Center>
+             <Center py={5}><Text>No models found{searchTerm ? ' matching "' + searchTerm + '"' : ''}.</Text></Center>
           )}
         </ModalBody>
 
         <ModalFooter borderTopWidth="1px" bg={footerBg}>
           <Button variant="ghost" mr={3} onClick={onClose}>Cancel</Button>
-          <Button colorScheme="blue" onClick={handleConfirmSelection} isDisabled={!selectedModelInternal}>
+          <Button 
+            colorScheme="purple"
+            onClick={handleConfirmSelection}
+            isDisabled={!selectedModelInternal}
+          >
             Select Model
           </Button>
         </ModalFooter>

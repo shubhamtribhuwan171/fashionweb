@@ -20,8 +20,10 @@ import {
   Box,
   Flex,
 } from '@chakra-ui/react';
-// Import mock data functions matching the updated mockData.js
-import { getMockCollections, createMockCollection, addAssetToCollection } from '../../data/mockData';
+import axios from 'axios'; // Import axios
+
+// TODO: Move to config
+const API_BASE_URL = 'https://productmarketing-ai-f0e989e4e1ad.herokuapp.com';
 
 export default function AddToCollectionModal({ isOpen, onClose, styleId }) {
   const toast = useToast();
@@ -31,18 +33,38 @@ export default function AddToCollectionModal({ isOpen, onClose, styleId }) {
   const [selectedCollectionId, setSelectedCollectionId] = useState(null);
   const [newCollectionName, setNewCollectionName] = useState('');
   const [createMode, setCreateMode] = useState(false);
+  const [error, setError] = useState(null); // Add error state
+
+  const getAuthConfig = () => {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+          toast({ title: "Authentication Error", description: "Please log in again.", status: "error" });
+          setError("Authentication token not found.");
+          return null;
+      }
+      return { headers: { Authorization: `Bearer ${token}` } };
+  };
 
   const fetchCollectionsForModal = useCallback(async () => {
     setLoading(true);
     setCreateMode(false); 
     setSelectedCollectionId(null);
     setNewCollectionName('');
+    setError(null);
+    const config = getAuthConfig();
+    if (!config) {
+        setLoading(false);
+        return;
+    }
+
     try {
-        const data = await getMockCollections();
-        setCollections(data || []);
+        // --- Real API call --- 
+        const response = await axios.get(`${API_BASE_URL}/api/collections`, config);
+        setCollections(response.data || []);
     } catch (err) {
         console.error("Error fetching collections for modal:", err);
-        toast({ title: "Failed to load collections", status: "error", duration: 3000});
+        setError(err.response?.data?.message || "Failed to load collections.");
+        toast({ title: "Failed to load collections", description: error, status: "error", duration: 3000});
         setCollections([]); // Clear on error
     } finally {
         setLoading(false);
@@ -58,6 +80,13 @@ export default function AddToCollectionModal({ isOpen, onClose, styleId }) {
 
   const handleSave = async () => {
     setSaving(true);
+    setError(null);
+    const config = getAuthConfig();
+    if (!config) {
+        setSaving(false);
+        return;
+    }
+
     try {
       if (createMode) {
         // --- Create New Collection and Add --- 
@@ -66,10 +95,11 @@ export default function AddToCollectionModal({ isOpen, onClose, styleId }) {
           setSaving(false);
           return;
         }
-        console.log(`MOCK: Creating NEW collection: ${newCollectionName} and adding asset ${styleId}`);
-        // 1. Create the collection
-        const newCollection = await createMockCollection({ name: newCollectionName, initialAssetId: styleId });
-        // 2. (Implicitly added via initialAssetId in mock, real API might need separate call)
+        console.log(`API: Creating NEW collection: ${newCollectionName} and adding asset ${styleId}`);
+        // API Call to create collection with initial asset
+        const payload = { name: newCollectionName.trim(), initialAssetId: styleId };
+        await axios.post(`${API_BASE_URL}/api/collections`, payload, config);
+        
         toast({ title: "Created collection and added look!", status: "success", duration: 2000 });
         onClose(); // Close modal on success
 
@@ -80,15 +110,19 @@ export default function AddToCollectionModal({ isOpen, onClose, styleId }) {
           setSaving(false);
           return;
         }
-        console.log(`MOCK: Adding asset ${styleId} to EXISTING collection: ${selectedCollectionId}`);
-        // Call the mock function (matching API payload)
-        await addAssetToCollection(selectedCollectionId, { asset_id: styleId });
+        console.log(`API: Adding asset ${styleId} to EXISTING collection: ${selectedCollectionId}`);
+        // API Call to add asset to collection items
+        const payload = { asset_id: styleId }; // API expects asset_id
+        await axios.post(`${API_BASE_URL}/api/collections/${selectedCollectionId}/items`, payload, config);
+        
         toast({ title: "Added to collection!", status: "success", duration: 2000 });
         onClose(); // Close modal on success
       }
-    } catch (error) {
-        console.error("Failed operation:", error);
-        toast({ title: `Failed to ${createMode ? 'create and add' : 'add to collection'}`, description: error.message, status: "error", duration: 3000 });
+    } catch (err) {
+        console.error("Failed operation:", err);
+        const errorMessage = err.response?.data?.message || `Failed to ${createMode ? 'create and add' : 'add to collection'}`;
+        setError(errorMessage);
+        toast({ title: "Operation Failed", description: errorMessage, status: "error", duration: 3000 });
     } finally {
         setSaving(false);
     }
@@ -152,6 +186,11 @@ export default function AddToCollectionModal({ isOpen, onClose, styleId }) {
                   </Button>
                 </>
               )}
+
+              {/* Display error message if any */}
+              {error && (
+                  <Text color="red.500" fontSize="sm">Error: {error}</Text>
+              )}
             </VStack>
           )}
         </ModalBody>
@@ -166,11 +205,24 @@ export default function AddToCollectionModal({ isOpen, onClose, styleId }) {
               Cancel
             </Button>
             <Button 
-              colorScheme="blue" 
               onClick={handleSave}
               isLoading={saving}
               loadingText={createMode ? "Creating..." : "Adding..."}
               isDisabled={loading || saving || (createMode ? !newCollectionName.trim() : !selectedCollectionId)}
+              bgGradient="linear(to-r, teal.400, purple.500, blue.500)"
+              color="white"
+              fontWeight="semibold"
+              _hover={{
+                bgGradient: "linear(to-r, teal.500, purple.600, blue.600)",
+                boxShadow: "lg",
+                transform: "translateY(-3px) scale(1.03)",
+              }}
+              _active={{
+                bgGradient: "linear(to-r, teal.600, purple.700, blue.700)",
+                transform: "translateY(-1px) scale(1.00)"
+              }}
+              boxShadow="md"
+              transition="all 0.25s cubic-bezier(.08,.52,.52,1)"
               borderRadius="md"
             >
               {createMode ? 'Create & Add' : 'Add to Collection'}
