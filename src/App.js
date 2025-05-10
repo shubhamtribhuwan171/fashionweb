@@ -17,7 +17,13 @@ import ExplorePage from './pages/ExplorePage';
 import ModelsPage from './pages/ModelsPage';
 import AccessoriesPage from './pages/AccessoriesPage';
 import ExperimentalCreatePage from './pages/ExperimentalCreatePage';
-
+import PosesPage from './pages/PosesPage';
+import ModelDetailPage from './pages/ModelDetailPage';
+import AccessoryDetailPage from './pages/AccessoryDetailPage';
+import PoseDetailPage from './pages/PoseDetailPage';
+import SignupPage from './components/Auth/SignupPage';
+import PrivacyPolicy from './components/Legal/PrivacyPolicy';
+import TermsOfService from './components/Legal/TermsOfService';
 // Simple theme customization (optional)
 const theme = extendTheme({
   // Add custom theme settings here if needed
@@ -52,9 +58,14 @@ const DashboardRoutes = ({ handleLogout }) => (
       {/* --- Add New Routes Here --- */}
       <Route path="models" element={<ModelsPage />} />
       <Route path="accessories" element={<AccessoriesPage />} />
+      {/* --- Add Poses Route --- */}
+      <Route path="poses" element={<PosesPage />} />
       {/* --- Add Experimental Route --- */}
       <Route path="experimental-create" element={<ExperimentalCreatePage />} /> 
-      
+      {/* Routes for new detail pages */}
+      <Route path="models/:modelId" element={<ModelDetailPage />} />
+      <Route path="accessories/:accessoryId" element={<AccessoryDetailPage />} />
+      <Route path="poses/:poseId" element={<PoseDetailPage />} />
       {/* Redirect base /app path to /app/dashboard */}
       <Route index element={<Navigate to="dashboard" replace />} />
       {/* Handle unknown dashboard routes */}
@@ -64,26 +75,30 @@ const DashboardRoutes = ({ handleLogout }) => (
 );
 
 function App() {
-  // Use state as the single source of truth for authentication
-  const [authStatus, setAuthStatus] = useState(false); // Default to not authenticated
+  // Initialize authStatus from localStorage token for persistence across reloads
+  const [authStatus, setAuthStatus] = useState(() => {
+    return Boolean(localStorage.getItem('authToken'));
+  });
 
   const handleLogin = () => {
-    // Simulate successful login - in real app, verify credentials, get token
-    setAuthStatus(true); // Update state to trigger re-render and route change
-    // Navigation now happens within LoginPage after this state update completes
+    // LoginPage stores authToken in localStorage; update state
+    setAuthStatus(true);
   };
 
   const handleLogout = () => {
-    setAuthStatus(false); // Update state
-    // Token clearing would happen here in a real app
-    // Navigation back to landing page will happen automatically due to route protection change
+    // Clear stored token and update state
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userInfo');
+    setAuthStatus(false);
   };
   
   return (
     <ChakraProvider theme={theme}>
       <Router>
         <Routes>
-          {/* Route guards now use authStatus state */} 
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/terms-of-service" element={<TermsOfService />} />
           <Route 
             path="/" 
             element={authStatus ? <Navigate to="/app/dashboard" replace /> : <LandingPage />} 
@@ -93,7 +108,7 @@ function App() {
             element={authStatus ? <Navigate to="/app/dashboard" replace /> : <LoginPage onLoginSuccess={handleLogin} />} 
           />
           {/* Add Signup route later */}
-          {/* <Route path="/signup" element={<SignupPage />} /> */}
+          <Route path="/signup" element={<SignupPage />} />
 
           {/* Protected dashboard routes under /app/* */}
           <Route 

@@ -154,6 +154,7 @@ export default function StyleCard({ style, onRemoveFromCollection }) {
               src={displayImageUrl}
               alt={style.prompt || 'Generated Look'}
               objectFit="cover"
+              objectPosition="top"
               loading="lazy"
               fallbackSrc="https://via.placeholder.com/150?text=Loading"
             />

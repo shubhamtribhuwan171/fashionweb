@@ -36,6 +36,7 @@ export default function ModelCard({ model, onDelete }) {
               src={model.storage_url} 
               alt={model.name || 'Model Image'} 
               objectFit="cover" 
+              objectPosition="top"
               fallbackSrc='https://via.placeholder.com/150?text=Model' 
             />
           </Box>
@@ -44,20 +45,23 @@ export default function ModelCard({ model, onDelete }) {
           <Text fontSize="sm" fontWeight="medium" noOfLines={1}>{model.name || 'Untitled Model'}</Text>
           {/* Optional: Could add a tag or other info here if needed in future */}
         </Box>
-        <IconButton
-          icon={<FaTrash />}
-          aria-label="Delete model"
-          colorScheme="red"
-          variant="ghost"
-          size="sm"
-          position="absolute"
-          top={2}
-          right={2}
-          onClick={(e) => { 
-            e.stopPropagation();
-            onDelete(model.id);
-          }}
-        />
+        {/* Only show delete for private models */}
+        {model.visibility !== 'public' && (
+          <IconButton
+            icon={<FaTrash />}
+            aria-label="Delete model"
+            colorScheme="red"
+            variant="ghost"
+            size="sm"
+            position="absolute"
+            top={2}
+            right={2}
+            onClick={(e) => { 
+              e.stopPropagation();
+              onDelete(model.id);
+            }}
+          />
+        )}
       </Box>
 
       <ImagePreviewModal 

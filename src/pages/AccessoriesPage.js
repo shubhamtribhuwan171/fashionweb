@@ -20,20 +20,33 @@ import {
   Skeleton,
   SkeletonText,
   VStack,
-  HStack
+  HStack,
+  Card,
+  CardBody,
+  Image,
+  Stack,
+  CardFooter,
+  Link as ChakraLink,
+  AspectRatio,
+  Tabs, TabList, TabPanels, Tab
 } from '@chakra-ui/react';
-import { FaPlus, FaFilter } from 'react-icons/fa';
+import { FaPlus, FaFilter, FaTrash, FaEdit } from 'react-icons/fa';
 import axios from 'axios';
 import AccessoryCard from '../components/Accessories/AccessoryCard';
 import UploadAccessoryModal from '../components/Accessories/UploadAccessoryModal';
+import EditAccessoryModal from '../components/Accessories/EditAccessoryModal';
 import { usePageHeader } from '../components/Layout/DashboardLayout';
 import StyledSelect from '../components/Common/StyledSelect';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
 
 // TODO: Move to config or central place
 const API_BASE_URL = 'https://productmarketing-ai-f0e989e4e1ad.herokuapp.com';
 
 // TODO: Replace with actual workspace ID from context/state management
 const getMockWorkspaceId = () => '95d29ad4-47fa-48ee-85cb-cbf762eb400a';
+
+// Global workspace for built-in (public) accessories
+const GLOBAL_WORKSPACE_ID = '11111111-2222-3333-4444-555555555555';
 
 // Define accessory categories (match API documentation)
 const ACCESSORY_CATEGORIES = ['hats', 'bags', 'jewelry', 'shoes', 'scarves', 'other'];
@@ -49,13 +62,19 @@ const SkeletonAccessoryCard = () => (
 export default function AccessoriesPage() {
   const { setHeader } = usePageHeader();
   const [accessories, setAccessories] = useState([]);
+  const cardBg = useColorModeValue('white', 'gray.800');
+  const textColor = useColorModeValue('gray.600', 'gray.400');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [filterCategory, setFilterCategory] = useState('');
+  const [tabIndex, setTabIndex] = useState(0);
   const toast = useToast();
   const currentWorkspaceId = getMockWorkspaceId();
   const { isOpen: isUploadModalOpen, onOpen: onOpenUploadModal, onClose: onCloseUploadModal } = useDisclosure();
+  const { isOpen: isEditModalOpen, onOpen: onOpenEditModal, onClose: onCloseEditModal } = useDisclosure();
+  const [selectedAccessory, setSelectedAccessory] = useState(null);
   const numSkeletons = 12; // Number of skeletons to show
+  const navigate = useNavigate();
 
   useEffect(() => {
     setHeader('Accessories', 'Manage your accessory inventory.');
@@ -89,11 +108,18 @@ export default function AccessoriesPage() {
     }
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/accessory-images`, {
-        ...config,
-        params
-      });
-      setAccessories(response.data || []);
+      // Fetch both private and public accessories
+      const [privateRes, publicRes] = await Promise.all([
+        axios.get(`${API_BASE_URL}/api/accessory-images`, {...config, params: {...params, workspaceId: currentWorkspaceId}}),
+        axios.get(`${API_BASE_URL}/api/accessory-images`, {...config, params: {...params, workspaceId: GLOBAL_WORKSPACE_ID}})
+      ]);
+      const privateAcc = privateRes.data || [];
+      const publicAcc = publicRes.data || [];
+      // Tag with visibility
+      setAccessories([
+        ...privateAcc.map(a => ({...a, visibility: 'private'})),
+        ...publicAcc.map(a => ({...a, visibility: 'public'}))
+      ]);
     } catch (err) {
       console.error("Error fetching accessories:", err);
       const errorMsg = err.response?.data?.message || "Failed to load accessories";
@@ -135,9 +161,35 @@ export default function AccessoriesPage() {
     fetchAccessories(filterCategory);
   };
 
+  const handleEditClick = (accessory) => {
+    setSelectedAccessory(accessory);
+    onOpenEditModal();
+  };
+
+  const handleSaveSuccess = () => {
+    fetchAccessories(filterCategory);
+  };
+
+  // Filter accessories based on the selected tab and category
+  const filteredAccessories = accessories.filter(acc => {
+    const matchesVisibility = tabIndex === 0 || 
+                             (tabIndex === 1 && acc.visibility === 'public') || 
+                             (tabIndex === 2 && acc.visibility === 'private');
+    const matchesCategory = !filterCategory || acc.category === filterCategory;
+    return matchesVisibility && matchesCategory;
+  });
+
   return (
     <VStack spacing={6} align="stretch">
-      <Flex mb={6} align="center" wrap="wrap" justifyContent="flex-end">
+      <Flex mb={0} align="center" wrap="wrap" justifyContent="space-between">
+        <Tabs onChange={(index) => setTabIndex(index)} variant="soft-rounded" colorScheme="purple" mr={4}>
+          <TabList>
+            <Tab>All</Tab>
+            <Tab>Public</Tab>
+            <Tab>Private</Tab>
+          </TabList>
+        </Tabs>
+
         <Flex align="center" gap={4} >
           <StyledSelect
             placeholder="Filter by Category"
@@ -186,16 +238,55 @@ export default function AccessoriesPage() {
           <AlertIcon />
           Error loading accessories: {error}
         </Alert>
-      ) : accessories.length > 0 ? (
+      ) : filteredAccessories.length > 0 ? (
         <SimpleGrid columns={{ base: 2, sm: 3, md: 4, lg: 5, xl: 6 }} spacing={6}>
-          {accessories.map(acc => (
-            <AccessoryCard key={acc.id} accessory={acc} onDelete={handleDelete} />
+          {filteredAccessories.map(acc => (
+            <Card
+                key={acc.id}
+                bg={cardBg}
+                shadow="md"
+                borderRadius="lg"
+                overflow="hidden"
+                _hover={{ shadow: 'lg', transform: 'translateY(-2px)', transition: 'all 0.2s' }}
+              >
+                <CardBody p={0}>
+                 <RouterLink to={`/app/accessories/${acc.id}`} style={{ textDecoration: 'none' }}>
+                    <AspectRatio ratio={1}>
+                      <Image
+                        src={acc.thumbnail_url || acc.storage_url || 'https://via.placeholder.com/150?text=No+Image'}
+                        alt={acc.name || 'Accessory'}
+                        objectFit="cover"
+                        objectPosition="top"
+                        fallbackSrc="https://via.placeholder.com/150?text=Loading..."
+                      />
+                    </AspectRatio>
+                    <Stack mt='2' p={3} spacing='1'>
+                      <Heading size='xs' noOfLines={1}>{acc.name || 'Unnamed Accessory'}</Heading>
+                      <Tag size="sm" colorScheme="purple" variant="subtle" alignSelf="flex-start" textTransform="capitalize">
+                        {acc.category || 'Other'}
+                      </Tag>
+                      {/* Visibility Badge */}
+                      <Tag size="sm" variant="subtle" colorScheme={acc.visibility === 'public' ? 'blue' : 'green'} ml={1}>
+                        {acc.visibility === 'public' ? 'Public' : 'Private'}
+                      </Tag>
+                    </Stack>
+                 </RouterLink>
+                </CardBody>
+              </Card>
           ))}
         </SimpleGrid>
       ) : (
         <Center p={10} borderWidth="1px" borderRadius="md" borderStyle="dashed">
            <Heading size="md" color="gray.500">
-            {filterCategory ? `No accessories found for category: ${filterCategory}` : 'No accessories uploaded yet.'}
+            {(() => {
+              if (filterCategory && tabIndex === 0) return `No accessories found for category: ${filterCategory}`;
+              if (filterCategory && tabIndex === 1) return `No public accessories found for category: ${filterCategory}`;
+              if (filterCategory && tabIndex === 2) return `No private accessories found for category: ${filterCategory}`;
+              if (tabIndex === 0) return "No accessories found.";
+              if (tabIndex === 1) return "No public accessories found.";
+              if (tabIndex === 2) return "No private accessories found.";
+              return "No accessories found."; // Default fallback
+            })()}
            </Heading>
         </Center>
       )}
@@ -205,6 +296,14 @@ export default function AccessoriesPage() {
         onClose={onCloseUploadModal}
         onUploadSuccess={handleUploadSuccess}
       />
+      {selectedAccessory && (
+          <EditAccessoryModal
+            isOpen={isEditModalOpen}
+            onClose={onCloseEditModal}
+            accessory={selectedAccessory}
+            onSaveSuccess={handleSaveSuccess}
+          />
+      )}
     </VStack>
   );
 } 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Box, VStack, Button, Link as ChakraLink, Divider, Flex, Text, Icon, Badge, Menu, MenuButton, MenuList, MenuItem, Avatar } from '@chakra-ui/react';
+import { Box, VStack, Button, Link as ChakraLink, Divider, Flex, Text, Icon, Badge, Menu, MenuButton, MenuList, MenuItem, Avatar, IconButton } from '@chakra-ui/react';
 import { NavLink as RouterNavLink, useNavigate, useLocation } from 'react-router-dom';
-import { FiHome, FiLayers, FiPlusSquare, FiGrid, FiBox, FiSettings, FiLogOut, FiChevronDown, FiChevronUp, FiBriefcase, FiPlus, FiCompass, FiStar, FiShoppingBag, FiUser, FiGift, FiMessageSquare, FiThumbsUp, FiCheck } from 'react-icons/fi';
+import { FiHome, FiLayers, FiPlusSquare, FiGrid, FiBox, FiSettings, FiLogOut, FiChevronDown, FiChevronUp, FiBriefcase, FiPlus, FiCompass, FiStar, FiShoppingBag, FiUser, FiGift, FiMessageSquare, FiThumbsUp, FiCheck, FiMeh } from 'react-icons/fi';
 
 // Custom NavLink style for active state
 const activeLinkStyle = {
@@ -131,9 +131,10 @@ function SectionHeader({ title }) {
   );
 }
 
-function WorkspaceSelector({ currentWorkspace, userWorkspaces = [], onAddWorkspace, onSwitchWorkspace, isLoading }) {
+function WorkspaceSelector({ currentWorkspace, userWorkspaces = [], onAddWorkspace, onSwitchWorkspace, isLoading, userInfo }) {
   const current = currentWorkspace;
-  const workspaces = userWorkspaces;
+  // Filter out the "Global Asset Library"
+  const workspaces = userWorkspaces.filter(ws => ws.name !== "Global Asset Library");
 
   if (isLoading) {
     return (
@@ -180,10 +181,7 @@ function WorkspaceSelector({ currentWorkspace, userWorkspaces = [], onAddWorkspa
               {/* Text Content */}
               <VStack align="start" spacing={0} flex="1" overflow="hidden">
                 <Text fontWeight="semibold" fontSize="sm" color="gray.700" isTruncated>
-                  {current.name} 
-                </Text>
-                <Text fontSize="xs" color="gray.500" isTruncated>
-
+                  {current.name}
                 </Text>
               </VStack>
               {/* Arrow Icon - Positioned absolutely */}
@@ -215,9 +213,6 @@ function WorkspaceSelector({ currentWorkspace, userWorkspaces = [], onAddWorkspa
                     <Text fontWeight="medium" fontSize="sm" color="gray.800" isTruncated>
                       {ws.name}
                     </Text>
-                    <Text fontSize="xs" color="gray.500" isTruncated>
-  
-                    </Text>
                   </VStack>
                   {ws.id === current.id && (
                     <Icon as={FiCheck} color="purple.500" ml={3} />
@@ -243,7 +238,21 @@ function WorkspaceSelector({ currentWorkspace, userWorkspaces = [], onAddWorkspa
 function Sidebar({ logout, workspaces, currentWorkspace, onSwitchWorkspace, onAddWorkspace, isLoadingWorkspaces }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const user = { name: 'User Name', email: 'user@example.com' }; // Placeholder
+  // const user = { name: 'User Name', email: 'user@example.com' }; // Remove placeholder
+
+  // Retrieve and parse user info from localStorage
+  const [userInfo, setUserInfo] = useState(() => {
+    const storedInfo = localStorage.getItem('userInfo');
+    try {
+      return storedInfo ? JSON.parse(storedInfo) : null;
+    } catch (error) {
+      console.error("Error parsing user info from localStorage:", error);
+      return null;
+    }
+  });
+
+  // Optionally, listen for storage changes if needed (more advanced)
+  // useEffect(() => { ... event listener for storage ... }, []);
 
   const handleLogout = () => {
     logout();
@@ -294,6 +303,11 @@ function Sidebar({ logout, workspaces, currentWorkspace, onSwitchWorkspace, onAd
       icon: FiUser
     },
     {
+      label: 'Poses',
+      href: '/app/poses',
+      icon: FiMeh
+    },
+    {
       label: 'Accessories',
       href: '/app/accessories',
       icon: FiGift,
@@ -321,6 +335,7 @@ function Sidebar({ logout, workspaces, currentWorkspace, onSwitchWorkspace, onAd
         onSwitchWorkspace={onSwitchWorkspace}
         onAddWorkspace={onAddWorkspace}
         isLoading={isLoadingWorkspaces}
+        userInfo={userInfo}
       /> 
       
       <VStack spacing={1} align="stretch" flexGrow={1}> {/* Reduced spacing */} 
@@ -379,23 +394,32 @@ function Sidebar({ logout, workspaces, currentWorkspace, onSwitchWorkspace, onAd
       <VStack spacing={1} align="stretch" mt="auto"> {/* Push settings/user to bottom */} 
         <Divider my={2} borderColor="gray.200" />
         {/* User Info Section */}
-        <Flex 
-          align="center" 
-          p={2} 
-          borderRadius="md" 
-          _hover={{ bg: 'whiteAlpha.500', cursor: 'pointer' }} 
-          onClick={handleLogout} // Temporary: Clicking this logs out
-        >
-          <Avatar size="sm" name={user.name} mr={3} bg="gray.600" />
-          <Box flex="1" overflow="hidden">
-            <Text fontSize="sm" fontWeight="semibold" color="gray.800" isTruncated>
-              {user.name}
+        <Flex align="center" mt={4} width="100%" px={4} py={3} borderRadius="md" _hover={{ bg: 'whiteAlpha.500' }} cursor="pointer">
+          <Avatar 
+            size="sm" 
+            // Use initials if available, otherwise default
+            name={userInfo?.name || userInfo?.email?.substring(0, 2).toUpperCase()} // Extract initials from name or email
+            // src={userInfo?.avatar_url} // Optional: Add avatar URL if available
+            bg="gray.600" 
+            color="white" 
+            mr={3}
+          />
+          <VStack align="start" spacing={0} flex={1} overflow="hidden">
+            <Text fontSize="sm" fontWeight="semibold" color="gray.700" noOfLines={1}>
+              {userInfo?.name || 'User'} {/* Display name or 'User' */} 
             </Text>
-            <Text fontSize="xs" color="gray.600" isTruncated>
-              {user.email}
+            <Text fontSize="xs" color="gray.500" noOfLines={1}>
+              {userInfo?.email || 'No email available'} {/* Display email or placeholder */} 
             </Text>
-          </Box>
-          <Icon as={FiLogOut} ml={2} />
+          </VStack>
+          <IconButton 
+            aria-label="Logout" 
+            icon={<FiLogOut />} 
+            variant="ghost" 
+            size="sm" 
+            onClick={handleLogout} 
+            color="gray.600"
+          />
         </Flex>
       </VStack>
 

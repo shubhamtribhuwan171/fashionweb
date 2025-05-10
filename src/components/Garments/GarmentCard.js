@@ -50,6 +50,7 @@ export default function GarmentCard({ garment, onDelete }) {
             src={imageUrl}
             alt={garment.name || 'Garment Image'}
             objectFit="cover"
+            objectPosition="top"
           />
         </Box>
       </AspectRatio>

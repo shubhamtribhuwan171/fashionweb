@@ -84,6 +84,28 @@
   ]
   ```
 
+### Fetch Workspace Summary Counts
+- **Description (Fashion Context):** Get summary counts (Looks, Collections, Base Garments) for a specific workspace.
+- **Method & Endpoint:** `GET /api/workspaces/{workspaceId}/summary`
+- **Auth Required:** Yes
+- **Request Payload:** None
+- **Path Parameters:**
+  - `workspaceId` (UUID, required) – The ID of the workspace to summarize.
+- **Example Success Response (200 OK):**
+  ```json
+  {
+    "workspaceId": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
+    "looks_created_count": 15,  // Total generated assets in this workspace
+    "collections_count": 4,   // Total collections owned by the requesting user
+    "base_garments_count": 5    // Total non-archived products in this workspace
+  }
+  ```
+- **Errors:**
+  - `400 Bad Request` if `workspaceId` is invalid.
+  - `403 Forbidden` if the user is not a member of the workspace.
+  - `404 Not Found` (implicitly handled by membership check failing if workspace doesn't exist).
+  - `500 Internal Server Error` if database counting fails.
+
 ### Fetch Base Garments (Originally Products)
 - **Description (Fashion Context):** Get a list of Base Garments (e.g., t-shirt, jeans) belonging to the selected workspace. This uses the original `/api/products` endpoint.
 - **Method & Endpoint:** `GET /api/products?workspaceId={workspace_id}`
@@ -99,13 +121,26 @@
       "name": "Classic White Tee", // Garment Name
       "reference_image_url": "https://example.com/tee.jpg", // URL to the garment's image
       "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
-      "user_id": "0002676d-f4c3-4713-9860-cf409e57e7d7", // User who added it
+      "user_id": "0002676d-f4c3-4713-9860-cf409e57e7d7", // User who added it (NEW)
       "created_at": "2024-04-29T09:52:11.000Z",
-      "is_archived": false
+      "archived": false,
+      "garment_type": "top",
+      "tags": ["basics", "white", "cotton"], // (NEW, Optional) User-defined tags
+      "description": "Simple crew neck white t-shirt.", // (NEW, Optional) User description
+      "is_favorite": true, // (NEW, Optional) User favorite flag
+      "last_used_at": "2024-05-04T10:30:00.000Z", // (NEW, Optional) Timestamp of last use in generation
+      "usage_count": 5 // (NEW, Optional) How many times used in generation
     }
     // ... more garments
   ]
   ```
+- **Note:** When creating garments intended for use in Scene Composition (Modes 4/5), ensure the `garment_type` field is set appropriately ('top', 'bottom', or 'other') during creation via `POST /api/products`.
+- **Purpose of New Fields:**
+  - `user_id`: Identifies the user who uploaded or created the base garment.
+  - `tags`: Allows for flexible categorization and searching (e.g., search by "cotton" or "basics"). Can be used for filtering in the UI.
+  - `description`: Provides a space for more detailed notes about the garment.
+  - `is_favorite`: Allows users to mark frequently used or preferred garments for easy access.
+  - `last_used_at` / `usage_count`: Helps users understand which garments are used most/least often, potentially useful for sorting or cleanup.
 
 ### Fetch Generated Styles (Originally Assets)
 - **Description (Fashion Context):** Retrieve a paginated list of generated Styles/Looks for the selected workspace.
@@ -138,18 +173,52 @@
   ```json
   {
     "assets": [
-      {
+    {
         "id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
         "prompt": "Model wearing 'Classic White Tee'...",
         "image_url": "https://storage.example.com/style1.png",
-        "thumbnail_url": "https://storage.example.com/style1_thumb.png",
+      "thumbnail_url": "https://storage.example.com/style1_thumb.png",
         "workspace_id": "$WORKSPACE_ID",
         "user_id": "0002676d-f4c3-4713-9860-cf409e57e7d7",
-        "created_at": "2024-04-29T10:00:00.000Z",
-        "is_public": false,
+      "created_at": "2024-04-29T10:00:00.000Z",
+      "is_public": false,
         "is_liked": false,
         "isInCollection": false,
-        "job_id": "f45f9df4-4202-459f-8514-bb5fd38d44e9"
+        "job_id": "f45f9df4-4202-459f-8514-bb5fd38d44e9",
+        "collections": [
+          { "id": "col_12345", "name": "Summer Moodboard" }, 
+          { "id": "col_67890", "name": "Favourites" }
+        ],
+        "model_image_id": "d120b36e-f85d-4a1d-ae14-bbe3cb9673be",
+        "top_product_id": "e7a...",         // <<< NEW: ID of top garment used
+        "bottom_product_id": "f8b...",     // <<< NEW: ID of bottom garment used
+        "pose_image_id": "p9c...",         // <<< NEW: ID of pose image used
+        "garment_focus": "top",              // <<< NEW: Focus hint used
+        "input_accessory_ids": ["ad101304-f15d-4a97-9aa3-a108aac59bca"],
+        "input_model_details": {
+            "id": "d120b36e-f85d-4a1d-ae14-bbe3cb9673be",
+            "name": "Studio Model A",
+            "storage_url": "https://.../model-images/.../image.jpg"
+        },
+        "input_product_details": {
+            "id": "e7a...",
+            "name": "Blue Denim Jacket",
+            "reference_image_url": "https://.../product-images/.../jacket.jpg"
+        },
+        "input_accessories_details": [
+            {
+                "id": "ad101304-f15d-4a97-9aa3-a108aac59bca",
+                "name": "Fedora",
+                "category": "hats",
+                "storage_url": "https://.../accessory-images/.../hat.jpg"
+            }
+        ],
+        "generation_params": {
+            "model": "stable-diffusion-xl",
+            "quality": "standard",
+            "size": "1024x1024",
+            "style": null
+        }
       }
       // ... up to `limit` items
     ],
@@ -185,7 +254,7 @@
         "is_public": true,
         "is_liked": false,
         "isInCollection": true
-      }
+    }
     ],
     "totalCount": 128,
     "limit": 5,
@@ -204,14 +273,18 @@
     "id": "d8894604-9b9c-47ba-9d84-7462d159aae5",
     "name": "Classic White Tee",
     "reference_image_url": "https://example.com/tee.jpg",
+    "garment_type": "top", // <<< NEW: Shows if it's categorized
     "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
-    "user_id": "0002676d-f4c3-4713-9860-cf409e57e7d7",
+    "user_id": "0002676d-f4c3-4713-9860-cf409e57e7d7", // (NEW) User who added it
     "created_at": "2024-04-29T09:52:11.000Z",
-    "is_archived": false,
-    "is_liked": true,
-    "collection_ids": ["col_12345", "col_67890"],
-    "job_id": "f45f9df4-4202-459f-8514-bb5fd38d44e9",
-    "model_image_id": "d120b36e-f85d-4a1d-ae14-bbe3cb9673be"
+    "archived": false, 
+    "brand_colors": null, // Example value
+    "default_cta": null, // Example value
+    "tags": ["basics", "white", "cotton"], // (NEW, Optional)
+    "description": "Simple crew neck white t-shirt.", // (NEW, Optional)
+    "is_favorite": true, // (NEW, Optional)
+    "last_used_at": "2024-05-04T10:30:00.000Z", // (NEW, Optional)
+    "usage_count": 5 // (NEW, Optional)
   }
   ```
 
@@ -224,7 +297,7 @@
   ```json
   {
     "id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
-    "prompt": "Model wearing 'Classic White Tee' (product_id: d88...) tucked into high-waisted blue jeans...",
+    "prompt": "Model wearing 'Classic White Tee'...",
     "image_url": "https://storage.example.com/style1.png",
     "thumbnail_url": "https://storage.example.com/style1_thumb.png",
     "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
@@ -235,101 +308,107 @@
     "isInCollection": false,
     "job_id": "f45f9df4-4202-459f-8514-bb5fd38d44e9",
     "model_image_id": "d120b36e-f85d-4a1d-ae14-bbe3cb9673be",
-    "product_id": "e7a...",
+    "top_product_id": "e7a...",         // <<< NEW: ID of top garment used
+    "bottom_product_id": "f8b...",     // <<< NEW: ID of bottom garment used
+    "pose_image_id": "p9c...",         // <<< NEW: ID of pose image used
+    "garment_focus": "top",              // <<< NEW: Focus hint used
     "input_accessory_ids": ["ad101304-f15d-4a97-9aa3-a108aac59bca"],
     "generation_params": {
         "model": "stable-diffusion-xl",
         "quality": "standard",
         "size": "1024x1024",
         "style": null
-    }
+    },
+    "collections": [
+      { "id": "col_12345", "name": "Summer Moodboard" },
+      { "id": "col_67890", "name": "Favourites" }
+    ],
+    "input_model_details": {
+        "id": "d120b36e-f85d-4a1d-ae14-bbe3cb9673be",
+        "name": "Studio Model A",
+        "storage_url": "https://.../model-images/.../image.jpg"
+    },
+    "input_product_details": {
+        "id": "e7a...",
+        "name": "Blue Denim Jacket",
+        "reference_image_url": "https://.../product-images/.../jacket.jpg"
+    },
+    "input_accessories_details": [
+        {
+            "id": "ad101304-f15d-4a97-9aa3-a108aac59bca",
+            "name": "Fedora",
+            "category": "hats",
+            "storage_url": "https://.../accessory-images/.../hat.jpg"
+        }
+    ]
   }
   ```
 
 ### Add New Base Garment (Originally Product)
-- **Description (Fashion Context):** Creates a new Base Garment record with an optional reference image.
-
-#### Step 1: Upload Reference Image
-- **Endpoint:** `POST /api/input-images/upload`
+- **Description (Fashion Context):** Creates a new Base Garment record with its reference image.
+- **Method & Endpoint:** `POST /api/products`
 - **Auth Required:** Yes
 - **Content-Type:** `multipart/form-data`
 - **Form Data Fields:**
-  - `workspaceId` (string): Your workspace UUID
-  - `image` (file): The image file to upload
+  - `image` (file, required): The image file for the garment.
+  - `name` (string, required): Name of the garment (e.g., "Classic White Tee").
+  - `workspace_id` (UUID, required): The ID of the workspace.
+  - `garment_type` (string, optional): 'top', 'bottom', or 'other'. Required if used in Scene Composition.
+  - `brand_colors` (stringified JSON, optional): e.g., `'{"primary": "#000000", "accent": "#FF0000"}'`
+  - `default_cta` (string, optional): e.g., "Shop Now!"
+  - `tags` (stringified JSON array, optional): e.g., `'["basics", "white"]'`
+  - `description` (string, optional): "Simple crew neck..."
+  - `is_favorite` (boolean, optional): `true` or `false` (sent as string 'true'/'false' in form-data, parsed by backend)
 - **Example Request (curl):**
   ```bash
-  curl -X POST https://productmarketing-ai-f0e989e4e1ad.herokuapp.com/api/input-images/upload \
+  curl -X POST https://productmarketing-ai-f0e989e4e1ad.herokuapp.com/api/products \
     -H "Authorization: Bearer $TOKEN" \
-    -F "workspaceId=$WORKSPACE_ID" \
-    -F "image=@/path/to/photo.jpg"
-  ```
-- **Example Response (201 Created):**
-  ```json
-  {
-    "id": "img_abcdef-1234",
-    "storage_url": "https://your-cdn.supabase.co/input-images/…/img_abcdef.jpg",
-    "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
-    "user_id": "0002676d-f4c3-4713-9860-cf409e57e7d7",
-    "created_at": "2024-04-29T12:00:00.000Z"
-  }
-  ```
-
-#### Step 2: Create Base Garment
-- **Endpoint:** `POST /api/products`
-- **Auth Required:** Yes
-- **Content-Type:** `application/json`
-- **Request Payload:**
-  ```json
-  {
-    "name": "Blue Denim Jacket",
-    "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
-    "reference_image_url": "https://your-cdn.supabase.co/input-images/…/img_abcdef.jpg",
-    "brand_colors": { "primary": "#000000", "accent": "#FF0000" },
-    "default_cta": "Shop Now!"
-  }
+    -F "name=Blue Denim Jacket" \
+    -F "workspace_id=$WORKSPACE_ID" \
+    -F "garment_type=top" \
+    -F "tags=["denim", "casual"]" \
+    -F "description=Standard blue denim jacket." \
+    -F "image=@/path/to/jacket.jpg"
   ```
 - **Example Response (201 Created):**
   ```json
   {
     "id": "e7a...",
     "name": "Blue Denim Jacket",
-    "reference_image_url": "https://your-cdn.supabase.co/input-images/…/img_abcdef.jpg",
+    "reference_image_url": "https://your-cdn.supabase.co/product-images/.../jacket.jpg", 
     "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
-    "user_id": "0002676d-f4c3-4713-9860-cf409e57e7d7",
+    "user_id": "0002676d-f4c3-4713-9860-cf409e57e7d7", // (NEW)
     "created_at": "2024-05-01T09:00:00.000Z",
-    "is_archived": false
+    "garment_type": "top",
+    "archived": false,
+    "tags": ["denim", "casual"], // (NEW)
+    "description": "Standard blue denim jacket.", // (NEW)
+    "is_favorite": false, // (NEW - default)
+    "last_used_at": null, // (NEW - default)
+    "usage_count": 0 // (NEW - default)
   }
   ```
 
 ### Update Base Garment (Originally Product)
-- **Description (Fashion Context):** Updates an existing Base Garment record (e.g., rename, change image URL, or archive).
+- **Description (Fashion Context):** Updates an existing Base Garment's metadata (e.g., rename, change garment type, archive). **Note:** This endpoint *cannot* be used to change the reference image file.
 - **Method & Endpoint:** `PUT /api/products/{garmentId}`
 - **Auth Required:** Yes
-- **Request Payload:**
+- **Request Payload (JSON):**
   ```json
   {
     "name": "Blue Denim Jacket Updated",      // Optional
-    "reference_image_url": "https://example.com/jacket-new.jpg",     // Optional
-    "brand_colors": { "primary": "#FFFFFF" }, // Optional
-    "default_cta": "Shop Now",                // Optional
-    "archived": true                          // Optional (archive/unarchive)
+    "garment_type": "top",             
+    "archived": true,                         
+    // New optional fields for update
+    "tags": ["denim", "casual", "favorite"], 
+    "description": "My favorite standard blue denim jacket.",
+    "is_favorite": true
   }
   ```
-- **Example Success Response (200 OK):**
-  ```json
-  {
-    "id": "d8894604-9b9c-47ba-9d84-7462d159aae5",
-    "name": "Blue Denim Jacket Updated",
-    "reference_image_url": "https://example.com/jacket-new.jpg",
-    "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
-    "user_id": "0002676d-f4c3-4713-9860-cf409e57e7d7",
-    "created_at": "2024-04-29T09:52:11.000Z",
-    "is_archived": true
-  }
-  ```
+- **Example Success Response (200 OK):** (Returns updated product object including new fields)
 
 ### Delete Base Garment (Originally Product)
-- **Description (Fashion Context):** Deletes a Base Garment by its ID.
+- **Description (Fashion Context):** Deletes a Base Garment by its ID. This also deletes the associated image file from storage.
 - **Method & Endpoint:** `DELETE /api/products/{garmentId}`
 - **Auth Required:** Yes
 - **Request Payload:** None
@@ -384,145 +463,126 @@
 
 ## 3. Create Style (Originally Generate Asset)
 
-### Upload Input Reference Image
-- **Description (Fashion Context):** Uploads a reference image (e.g., photo for virtual try-on, texture) to be used as input for *image-edit* Style generation. Uses the original `/api/input-images/upload` endpoint.
+### Upload Input Reference Image (for Image Editing)
+- **Description (Fashion Context):** Uploads a reference image (e.g., photo for virtual try-on, texture) specifically to be used as input for the **Reference Image Edit Mode** of Style generation (`POST /api/generate`). This is **not** for creating Base Garments. Uses the original `/api/input-images/upload` endpoint.
 - **Method & Endpoint:** `POST /api/input-images/upload`
 - **Auth Required:** Yes
-- **Request Payload:** `multipart/form-data` containing:
-  - `image`: The image file.
-  - `workspace_id`: The ID of the current workspace.
+- **Content-Type:** `multipart/form-data`
+- **Form Data Fields:**
+  - `image` (file, required): The image file.
+  - `workspaceId` (UUID, required): The ID of the current workspace.
+- **Example Request (curl):**
+  ```bash
+  curl -X POST https://productmarketing-ai-f0e989e4e1ad.herokuapp.com/api/input-images/upload \
+    -H "Authorization: Bearer $TOKEN" \
+    -F "workspaceId=$WORKSPACE_ID" \
+    -F "image=@/path/to/reference_photo.jpg"
+  ```
 - **Example Success Response (201 Created):**
   ```json
   {
-    "id": "img_1234567890abcdef", // Reference Image ID
+    "id": "img_1234567890abcdef", // Reference Image ID (use this in POST /api/generate)
     "user_id": "0002676d-f4c3-4713-9860-cf409e57e7d7",
     "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
-    "image_url": "https://storage.example.com/input_ref_img.jpg",
+    "storage_url": "https://storage.example.com/input-images/.../input_ref_img.jpg", // Renamed from image_url for clarity
     "created_at": "2024-04-29T12:00:00.000Z"
   }
   ```
 
-### Initiate Style Generation (Using DALL-E 3 or DALL-E 2)
-- **Description (Fashion Context):** Starts the asynchronous AI Style/Look generation process. The backend determines the generation mode based on the primary ID provided (`product_id`, `input_image_id`, or `model_image_id`). These modes are mutually exclusive. **Do not send a `mode` parameter in the request.**
+### Generate a New Style/Look (Async)
+- **Description (Fashion Context):** Initiates an asynchronous job to generate a new Style/Look based on various inputs like a base model image, garment images, pose references, accessories, and a text prompt. The actual generation mode is determined by the backend based on the provided IDs.
 - **Method & Endpoint:** `POST /api/generate`
 - **Auth Required:** Yes
 - **Common Required Parameters (All Modes):**
-  - `prompt` (string, required): Text description of your desired image/scene. Can be minimal for edit/scene modes if the main instruction is via IDs/other params.
   - `workspace_id` (UUID, required): Your workspace identifier.
+  - `prompt` (string): Text description. Required for Text-to-Image mode, optional but recommended for guidance in other modes.
 
 - **Mode Selection & Specific Parameters:**
 
-  **1. Text-to-Image Mode (Default - No ID provided):**
-    - **Trigger:** No `product_id`, `input_image_id`, or `model_image_id` is provided.
+  **1. Text-to-Image Mode:**
+    - **Trigger:** No `input_image_id`, `product_id`, or `model_image_id` is provided.
     - **Purpose:** Generate a new image purely from text.
-    - **Backend Model Used:** `dall-e-3` (default) or `dall-e-2`.
+    - **Backend Model Used:** Typically `dall-e-3`.
     - **Required Parameters:** `prompt`, `workspace_id`.
-    - **Optional Parameters:**
-      - `model` (string): `dall-e-3` (default) or `dall-e-2`.
-      - `size` (string): `1024x1024` (default), `1792x1024`, `1024x1792`.
-      - `quality` (string): `standard` (default), `hd` (only for `dall-e-3`).
-      - `n` (integer): Number of images (currently only `1` supported).
-      - `aspect_ratio` (string): e.g., "1:1", "16:9" (often derived from `size`).
-      - `user` (string): End-user ID for abuse monitoring.
+    - **Optional Parameters:** OpenAI settings (`model`, `size`, `quality`, `n`, `aspect_ratio`, `user`).
 
-  **2. Product Edit Mode:**
-    - **Trigger:** `product_id` is provided.
-    - **Purpose:** Edit the `reference_image_url` associated with a specific Base Garment.
-    - **Backend Model Used:** `gpt-image-1` (DALL-E 2 based).
-    - **Required Parameters:** `prompt`, `workspace_id`, `product_id` (UUID).
-    - **Optional Parameters:**
-      - `size` (string): `1024x1024` (default), `512x512`, `256x256`.
-      - `n` (integer): Number of images (currently only `1` supported).
-      - `user` (string): End-user ID.
-    - **Ignored Parameters:** `model`, `quality`, `aspect_ratio`, `input_image_id`, `model_image_id`, etc.
-
-  **3. Image Edit Mode:**
+  **2. Reference Image Edit Mode:**
     - **Trigger:** `input_image_id` is provided.
-    - **Purpose:** Edit a specific previously uploaded reference image.
-    - **Backend Model Used:** `gpt-image-1` (DALL-E 2 based).
-    - **Required Parameters:** `prompt`, `workspace_id`, `input_image_id` (UUID).
-    - **Optional Parameters:** (Same as Product Edit Mode)
-      - `size` (string): `1024x1024` (default), `512x512`, `256x256`.
-      - `n` (integer): Number of images (currently only `1` supported).
-      - `user` (string): End-user ID.
-    - **Ignored Parameters:** `model`, `quality`, `aspect_ratio`, `product_id`, `model_image_id`, etc.
+    - **Purpose:** Edit a specific previously uploaded reference image based on the prompt. Requires an image previously uploaded via `POST /api/input-images/upload`.
+    - **Backend Model Used:** `dall-e-2`.
+    - **Required Parameters:** `workspace_id`, `input_image_id`. (`prompt` is optional but highly recommended).
+    - **Optional Parameters:** OpenAI settings (`size` [256/512/1024], `n`, `user`).
 
-  **4. Scene Generation Mode:**
-    - **Trigger:** `model_image_id` is provided. (If `product_id` is *also* provided, see Mode 5).
-    - **Purpose:** Generate a scene using a base model image and text prompt, optionally incorporating accessory *images*.
-    - **Backend Model Used:** `gpt-image-1` (DALL-E 2 based, uses multi-image edit).
-    - **Required Parameters:** `prompt`, `workspace_id`, `model_image_id` (UUID).
-    - **Optional Parameters:**
-      - `accessory_image_ids` (array of UUIDs): **Accessory images to include in the edit. Note: This is the expected field in the request.**
-      - `size` (string): `1024x1024` (default), `1536x1024`, `1024x1536`.
-      - `n` (integer): Number of images (currently only `1` supported).
-      - `user` (string): End-user ID.
-    - **Ignored Parameters:** `model`, `quality`, `aspect_ratio`, `product_id`, `input_image_id`, `pose`, `mood`.
+  **3. Legacy Product Edit Mode:**
+    - **Trigger:** `product_id` is provided (and NO `model_image_id` or Scene Params).
+    - **Purpose:** Edit the `reference_image_url` associated with a specific Base Garment.
+    - **Backend Model Used:** `dall-e-2`.
+    - **Required Parameters:** `workspace_id`, `product_id`. (`prompt` is optional but highly recommended).
+    - **Optional Parameters:** OpenAI settings (`size` [256/512/1024], `n`, `user`).
+    - **Note:** This mode cannot be combined with `top_product_id`, `bottom_product_id`, `pose_image_id`, etc. Use Mode 4 for that.
 
-  **5. Combined Scene Generation (Model + Garment + Accessories):**
-    - **Trigger:** BOTH `model_image_id` AND `product_id` are provided.
-    - **Purpose:** Generate a scene using a base model image, a garment image (from the product), and optionally accessory images, all guided by the prompt.
-    - **Backend Model Used:** `gpt-image-1` (DALL-E 2 based, uses multi-image edit).
-    - **Required Parameters:** `prompt`, `workspace_id`, `model_image_id` (UUID), `product_id` (UUID).
+  **4. Scene Composition Mode:**
+    - **Trigger:** `model_image_id` is provided.
+    - **Purpose:** Generate a scene compositing a base model image with optional garments (top/bottom), a pose reference, and accessories, guided by the prompt and focus hint.
+    - **Backend Model Used:** `gpt-image-1` (multi-image edit capability).
+    - **Required Parameters:** `workspace_id`, `model_image_id`. (`prompt` is optional but highly recommended).
     - **Optional Parameters:**
-      - `accessory_image_ids` (array of UUIDs): **Accessory images to include in the edit. Note: This is the expected field in the request.**
-      - `size` (string): `1024x1024` (default), `1536x1024`, `1024x1536`.
-      - `n` (integer): Number of images (currently only `1` supported).
-      - `user` (string): End-user ID.
-    - **Ignored Parameters:** `model`, `quality`, `aspect_ratio`, `input_image_id`, `pose`, `mood`.
+      - `top_product_id` (UUID): ID of the Product record (with `garment_type`='top') to use as the top garment.
+      - `bottom_product_id` (UUID): ID of the Product record (with `garment_type`='bottom') to use as the bottom garment.
+      - `pose_image_id` (UUID): ID of the Pose Image record to use as pose reference.
+      - `accessory_image_ids` (array of UUIDs): Accessory images to include.
+      - `garment_focus` (string): 'top', 'bottom', 'both', or 'none' (default) to guide AI focus.
+      - OpenAI settings (`size` [1024x1024, 1536x1024, 1024x1536], `n`, `user`).
+    - **Note:** Cannot be combined with `input_image_id` or the legacy `product_id`.
 
 - **Request Payload Examples:**
 
-  *Example 1: Text-to-Image (Using DALL-E 3)*
+  *Example 1: Text-to-Image* (Unchanged)
   ```json
-  {
-    "prompt": "A futuristic fashion illustration of a chrome jacket",
-    "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
-    "model": "dall-e-3",
-    "size": "1024x1024",
-    "quality": "hd"
-  }
+  { /* ... */ }
   ```
 
-  *Example 2: Product Edit (Using Base Garment's Image)*
-  ```json
-  {
-    "prompt": "Show this jacket on a mannequin in a store window display",
-    "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
-    "product_id": "e7a..." // Triggers Product Edit Mode
-    // "size": "1024x1024" // Optional size for edit
-  }
-  ```
-
-  *Example 3: Image Edit (Using Uploaded Reference Image)*
+  *Example 2: Reference Image Edit* (Using `input_image_id`)
   ```json
   {
     "prompt": "Change the background to a sunny beach",
     "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
-    "input_image_id": "img_1234567890abcdef" // Triggers Image Edit Mode
+    "input_image_id": "img_1234567890abcdef" // Triggers Reference Image Edit
   }
   ```
 
-  *Example 4: Scene Generation (Model Image + Optional Accessory Images)*
+  *Example 3: Legacy Product Edit* (Using single `product_id`)
   ```json
   {
-    "prompt": "Place the provided hat accessory realistically on the provided model image. Maintain the ecommerce product shot style.", // Prompt guides composition
+    "prompt": "Show this t-shirt folded neatly on a wooden table",
     "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
-    "model_image_id": "d120b36e-f85d-4a1d-ae14-bbe3cb9673be", // Triggers Scene Mode (4)
-    "accessory_image_ids": ["ad101304-f15d-4a97-9aa3-a108aac59bca"], // Optional accessory image input
-    "size": "1024x1024" // Model, quality, pose, mood etc are ignored by backend for this mode
+    "product_id": "d8894604-9b9c-47ba-9d84-7462d159aae5" // Triggers Legacy Product Edit
   }
   ```
 
-  *Example 5: Combined Scene (Model Image + Product/Garment Image + Optional Accessory Images)*
+  *Example 4: Scene Composition (Model + Top + Pose + Focus)*
   ```json
   {
-    "prompt": "Show the provided model image wearing the provided garment image and hat image. Studio lighting, clean background.", // Prompt guides composition of MULTIPLE images
+    "prompt": "Photorealistic image of the model wearing the specified top and matching the given pose. Clean studio background.",
     "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
-    "model_image_id": "d120b36e-f85d-4a1d-ae14-bbe3cb9673be", // Required for Combined Scene (5)
-    "product_id": "e7a...",                         // Required for Combined Scene (5) - provides garment image
-    "accessory_image_ids": ["ad101304-f15d-4a97-9aa3-a108aac59bca"], // Optional accessory image input
-    "size": "1024x1024" // Model, quality, pose, mood etc are ignored by backend for this mode
+    "model_image_id": "d120b36e-f85d-4a1d-ae14-bbe3cb9673be", // <<< Trigger
+    "top_product_id": "e7a...",                         // <<< Top Garment Input
+    "pose_image_id": "p9c...",                         // <<< Pose Input
+    "garment_focus": "top",                              // <<< Focus Hint
+    "size": "1024x1536"                                 // Optional setting
+  }
+  ```
+
+  *Example 5: Scene Composition (Model + Top + Bottom + Accessories)*
+  ```json
+  {
+    "prompt": "Model wearing the specified top, bottom, and hat accessory. Natural outdoor lighting.",
+    "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
+    "model_image_id": "d120b36e-f85d-4a1d-ae14-bbe3cb9673be", // <<< Trigger
+    "top_product_id": "e7a...",                         // <<< Top Input
+    "bottom_product_id": "f8b...",                     // <<< Bottom Input
+    "accessory_image_ids": ["ad101304-f15d-4a97-9aa3-a108aac59bca"], // <<< Accessory Input
+    "garment_focus": "both"                              // <<< Focus Hint (Optional)
   }
   ```
 
@@ -552,7 +612,7 @@
     "jobId": "f45f9df4-4202-459f-8514-bb5fd38d44e9",
     "status": "completed",
     // The ID of the generated Style/Look (originally assetId)
-    "assetId": "a1b2c3d4-e5f6-7890-1234-567890abcdef" 
+    "assetId": "a1b2c3d4-e5f6-7890-1234-567890abcdef"
   }
   ```
 - **Example Success Response (200 OK - Failed):**
@@ -560,9 +620,26 @@
   {
     "jobId": "f45f9df4-4202-459f-8514-bb5fd38d44e9",
     "status": "failed",
-    "error": "Insufficient credits" // Or other error message
+    "error": "Specific error message if job failed"
   }
   ```
+
+#### Generating Multiple Styles/Looks Concurrently
+
+To generate multiple different Styles or Looks "at the same time" (e.g., trying 5 different combinations of models, poses, garments, and prompts), the frontend should make multiple, separate API calls to the `POST /api/generate` endpoint.
+
+-   **One API Call Per Style:** Each desired Style/Look requires its own individual API request with its specific set of parameters (`prompt`, `model_image_id`, `pose_image_id`, `top_product_id`, etc.).
+-   **Asynchronous Processing:** The backend is designed to handle these requests asynchronously.
+    -   For each `POST /api/generate` request received, the system immediately creates a unique generation job and returns a `jobId`.
+    -   The actual image generation for each job then occurs in the background.
+    -   This allows the frontend to initiate several generation requests in quick succession without waiting for each one to complete before sending the next.
+-   **Tracking Progress:** The frontend should store each `jobId` received and can then poll the `GET /api/generate/:jobId` endpoint for each job independently to track its status and retrieve the resulting `assetId` upon completion.
+
+This approach leverages the backend's asynchronous job queue and Node.js's non-blocking nature to process multiple generation tasks concurrently, providing an efficient way to explore various style combinations.
+
+### Get Status of a Generation Job
+- **Description (Fashion Context):** Retrieves the current status of an image generation job. If the job is completed, it will include the `assetId` of the generated Style/Look.
+- **Method & Endpoint:** `GET /api/generate/:jobId`
 
 ### Like/Unlike Style (Originally Asset)
 
@@ -685,7 +762,7 @@
   ```json
   {
     // ID of the Style/Look (originally asset_id)
-    "asset_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef" 
+    "asset_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef"
   }
   ```
 - **Example Success Response (201 Created):** `{"message": "Asset added to collection successfully"}`
@@ -707,7 +784,7 @@
     "name": "My Design Sketches",
     "is_public": false, // Optional
     // Optional: ID of the Style/Look (Asset) to add immediately
-    "initialAssetId": "a1b2c3d4..." 
+    "initialAssetId": "a1b2c3d4..."
   }
   ```
 - **Example Success Response (201 Created):** (Returns new collection details)
@@ -719,11 +796,35 @@
 *(No major conceptual change)*
 
 ### Fetch User Profile
-- **Description (Fashion Context):** Get the profile details of the logged-in user.
+- **Description (Fashion Context):** Get the profile details of the logged-in user, including core user info and extended onboarding data.
 - **Method & Endpoint:** `GET /api/profile`
 - **Auth Required:** Yes
 - **Request Payload:** None
-- **Example Success Response (200 OK):** (Standard user fields)
+- **Example Success Response (200 OK):**
+  ```json
+  {
+    "id": "0002676d-f4c3-4713-9860-cf409e57e7d7",
+    "name": "Sarthak Sharma",
+    "email": "sarthak@example.com",
+    "avatar_url": null,
+    "onboarding_completed": true, // Or false if not yet completed
+    "created_at": "2024-05-01T10:00:00.000Z",
+    "user_profile_details": { // This object contains the extended onboarding data
+      "user_id": "0002676d-f4c3-4713-9860-cf409e57e7d7", // Foreign key, same as main ID
+      "primary_objective": "Create product advertisements",
+      "job_title_or_role": "Marketing Manager",
+      "other_job_title": null,
+      "company_name": "Fashion Forward Inc.",
+      "company_website": "https://fashionforward.example.com",
+      "industry": "Fashion & Apparel",
+      "other_industry": null,
+      "company_size": "11-50 people",
+      "created_at": "2024-05-06T12:00:00.000Z",
+      "updated_at": "2024-05-06T12:30:00.000Z"
+    }
+  }
+  ```
+- **Note:** `user_profile_details` will be an empty object `{}` if the user hasn't submitted their onboarding details yet or if they signed up before this feature was added.
 
 ### Fetch Liked Styles/Looks
 - **Description (Fashion Context):** Get a paginated list of Styles/Looks that the current user has liked.
@@ -784,7 +885,16 @@
         "storage_url": "https://.../model-images/.../image.jpg",
         "name": "Studio Model A",
         "created_at": "2024-05-02T09:32:36.000Z",
-        "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a" // Included for context
+        "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
+        "tags": ["studio", "female"], // (NEW, Optional)
+        "description": "Model A facing front.", // (NEW, Optional)
+        "is_favorite": false, // (NEW, Optional)
+        "last_used_at": null, // (NEW, Optional)
+        "usage_count": 0, // (NEW, Optional)
+        "gender": "female", // (NEW, Optional)
+        "body_type": "average", // (NEW, Optional)
+        "hair": "blonde, long", // (NEW, Optional)
+        "skin_tone": "fair" // (NEW, Optional)
       }
       // ... more model images
     ],
@@ -813,7 +923,12 @@
         "name": "Fedora",
         "category": "hats",
         "created_at": "2024-05-02T09:32:38.000Z",
-        "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a" // Included for context
+        "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
+        "tags": ["felt", "brown"], // (NEW, Optional)
+        "description": null, // (NEW, Optional)
+        "is_favorite": true, // (NEW, Optional)
+        "last_used_at": "2024-05-05T11:00:00.000Z", // (NEW, Optional)
+        "usage_count": 1 // (NEW, Optional)
       }
       // ... more accessory images
     ],
@@ -824,11 +939,49 @@
   ```
 
 ### Update User Profile
-- **Description (Fashion Context):** Updates the name or avatar of the logged-in user.
+- **Description (Fashion Context):** Updates the user's basic profile information (`name`, `avatar_url`) or their overall `onboarding_completed` status flag.
 - **Method & Endpoint:** `PUT /api/profile`
 - **Auth Required:** Yes
-- **Request Payload:** `{"name": "Updated Name", "avatar_url": "..."}` (Optional fields)
-- **Example Success Response (200 OK):** (Returns updated user profile)
+- **Request Payload:**
+  ```json
+  {
+    "name": "Sarthak S. Sharma", // Optional
+    "avatar_url": "https://example.com/new_avatar.png", // Optional
+    "onboarding_completed": true // Optional, to manually flag onboarding as done/undone
+  }
+  ```
+- **Example Success Response (200 OK):** (Returns updated core user profile fields, excluding `user_profile_details`)
+
+### Update User Onboarding & Profile Details (NEW)
+- **Description:** Saves or updates the detailed onboarding information for a user (e.g., objectives, company info). This also automatically sets the user's `onboarding_completed` flag to `true` in their main profile.
+- **Method & Endpoint:** `PUT /api/profile/details`
+- **Auth Required:** Yes
+- **Request Payload (JSON):** Include at least one field to update.
+  ```json
+  {
+    "primary_objective": "Client work (agency)", // Optional
+    "job_title_or_role": "Freelancer",           // Optional
+    "other_job_title": null,                     // Optional
+    "company_name": "Creative Solutions Co.",    // Optional
+    "company_website": "https://creativesolutions.example.com", // Optional
+    "industry": "Digital Agency",                // Optional
+    "other_industry": null,                      // Optional
+    "company_size": "Just me"                    // Optional
+  }
+  ```
+- **Example Success Response (200 OK):** (Returns the full, updated `user_profile_details` object)
+  ```json
+  {
+    "user_id": "0002676d-f4c3-4713-9860-cf409e57e7d7",
+    "primary_objective": "Client work (agency)",
+    "job_title_or_role": "Freelancer",
+    // ... other fields ...
+    "updated_at": "2024-05-07T14:00:00.000Z"
+  }
+  ```
+- **Errors:**
+  - `400 Bad Request` if the payload is empty or invalid (e.g., bad URL format).
+  - `500 Internal Server Error` if the database update fails.
 
 --- TBD
 
@@ -836,24 +989,96 @@
 
 Endpoints for managing reusable model photos and accessory images used in Scene Generation.
 
+**Purpose of New Fields (Apply to Model, Accessory, Pose Images where added):**
+- `user_id`: Identifies the user who uploaded the image.
+- `tags`: Allows for flexible categorization and searching (e.g., search by specific feature, style, color).
+- `description`: Provides space for notes about the image.
+- `is_favorite`: Lets users mark preferred images.
+- `last_used_at` / `usage_count`: Helps identify popular/unused inputs.
+
 ### List Model Images
 - **Description:** Get a list of model images uploaded to a specific workspace.
 - **Method & Endpoint:** `GET /api/model-images?workspaceId={workspace_id}`
 - **Auth Required:** Yes
 - **Query Parameters:**
   - `workspaceId` (UUID, required): The workspace to list images from.
+  - **Shared Library:** You can retrieve built-in models from the global library by calling the same endpoint with the global workspace ID (e.g. `workspaceId=11111111-2222-3333-4444-555555555555`). Merge the two result sets (`myWorkspace` + `globalLibrary`) in your client and tag records with a `source` flag as needed.
 - **Example Success Response (200 OK):**
   ```json
   [
     {
       "id": "d120b36e-f85d-4a1d-ae14-bbe3cb9673be",
       "storage_url": "https://.../model-images/.../image.jpg",
-      "name": "Studio Model A", // Optional name given at upload
-      "created_at": "2024-05-02T09:32:36.000Z"
+      "name": "Studio Model A", 
+      "created_at": "2024-05-02T09:32:36.000Z",
+      "tags": ["studio", "female"], // (NEW, Optional)
+      "description": "Model A facing front.", // (NEW, Optional)
+      "is_favorite": false, // (NEW, Optional)
+      "last_used_at": null, // (NEW, Optional)
+      "usage_count": 0, // (NEW, Optional)
+      "gender": "female", // (NEW, Optional)
+      "body_type": "average", // (NEW, Optional)
+      "hair": "blonde, long", // (NEW, Optional)
+      "skin_tone": "fair" // (NEW, Optional)
     }
     // ... more model images
   ]
   ```
+
+### Get Model Image by ID
+- **Description:** Gets details for a single model image by its ID.
+- **Method & Endpoint:** `GET /api/model-images/{modelImageId}`
+- **Auth Required:** Yes
+- **Path Parameters:**
+  - `modelImageId` (UUID, required): The ID of the model image to fetch.
+- **Example Success Response (200 OK):**
+  ```json
+  {
+    "id": "d120b36e-f85d-4a1d-ae14-bbe3cb9673be",
+    "storage_url": "https://.../model-images/.../image.jpg",
+    "name": "Studio Model A", 
+    "created_at": "2024-05-02T09:32:36.000Z",
+    "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
+    "tags": ["studio", "female"], // (NEW, Optional)
+    "description": "Model A facing front.", // (NEW, Optional)
+    "is_favorite": false, // (NEW, Optional)
+    "last_used_at": null, // (NEW, Optional)
+    "usage_count": 0, // (NEW, Optional)
+    "gender": "female", // (NEW, Optional)
+    "body_type": "average", // (NEW, Optional)
+    "hair": "blonde, long", // (NEW, Optional)
+    "skin_tone": "fair" // (NEW, Optional)
+  }
+  ```
+- **Errors:**
+  - `404 Not Found` if the image does not exist.
+  - `403 Forbidden` if the user does not have access to the image's workspace.
+  - `401 Unauthorized` if the request lacks a valid token.
+
+### Update Model Image
+- **Description:** Updates metadata for a specific model image (e.g., name, tags).
+- **Method & Endpoint:** `PUT /api/model-images/{modelImageId}`
+- **Auth Required:** Yes
+- **Path Parameters:**
+  - `modelImageId` (UUID, required): The ID of the model image to update.
+- **Request Payload (JSON):** Include at least one field to update.
+  ```json
+  {
+    "name": "Updated Model Name", // Optional
+    "tags": ["studio", "female", "smiling"], // Optional (replaces existing tags)
+    "description": "Updated description.", // Optional
+    "is_favorite": true, // Optional
+    "gender": "female", // Optional
+    "body_type": "petite", // Optional
+    "hair": "long brunette", // Optional
+    "skin_tone": "light olive" // Optional
+  }
+  ```
+- **Example Success Response (200 OK):** (Returns the full updated model image object)
+- **Errors:**
+  - `404 Not Found` if the image does not exist.
+  - `403 Forbidden` if the user does not own the image.
+  - `400 Bad Request` if the payload is empty or invalid.
 
 ### Upload Model Image
 - **Description:** Uploads a new model image file.
@@ -862,19 +1087,16 @@ Endpoints for managing reusable model photos and accessory images used in Scene 
 - **Content-Type:** `multipart/form-data`
 - **Form Data Fields:**
   - `workspaceId` (UUID, required): Workspace to associate the image with.
-  - `image` (file, required): The model image file.
+  - `image` (file, required): The model image file. File field **must** be named `image`.
   - `name` (string, optional): A user-friendly name for the image.
-- **Example Success Response (201 Created):**
-  ```json
-  {
-    "id": "d120b36e-f85d-4a1d-ae14-bbe3cb9673be",
-    "user_id": "0002676d-f4c3-4713-9860-cf409e57e7d7",
-    "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
-    "storage_url": "https://.../model-images/.../image.jpg",
-    "name": "Studio Model A",
-    "created_at": "2024-05-02T09:32:36.000Z"
-  }
-  ```
+  - `tags` (stringified JSON array, optional): `'["studio", "female"]'`
+  - `description` (string, optional): "Model A facing front."
+  - `is_favorite` (boolean, optional): `true` or `false`
+  - `gender` (string, optional): e.g., "female", "male", "non-binary"
+  - `body_type` (string, optional): e.g., "average", "athletic", "plus size"
+  - `hair` (string, optional): e.g., "blonde, long", "short brown buzzcut"
+  - `skin_tone` (string, optional): e.g., "fair", "olive", "dark"
+- **Example Success Response (201 Created):** (Includes new optional fields)
 
 ### Delete Model Image
 - **Description:** Deletes a specific model image by its ID.
@@ -890,19 +1112,72 @@ Endpoints for managing reusable model photos and accessory images used in Scene 
 - **Query Parameters:**
   - `workspaceId` (UUID, required): The workspace to list images from.
   - `category` (string, optional): Filter by category (e.g., `hats`, `bags`, `jewelry`, `shoes`, `scarves`, `other`).
+  - **Shared Library:** Call the same endpoint with the global workspace ID to retrieve shared accessories. On the front end, merge both sets and use a `source` flag to show library vs. personal.
 - **Example Success Response (200 OK):**
   ```json
   [
     {
       "id": "ad101304-f15d-4a97-9aa3-a108aac59bca",
       "storage_url": "https://.../accessory-images/.../hat.jpg",
-      "name": "Fedora", // Optional name given at upload
+      "name": "Fedora", 
       "category": "hats",
-      "created_at": "2024-05-02T09:32:38.000Z"
+      "created_at": "2024-05-02T09:32:38.000Z",
+      "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
+      "tags": ["felt", "brown"], // (NEW, Optional)
+      "description": null, // (NEW, Optional)
+      "is_favorite": true, // (NEW, Optional)
+      "last_used_at": "2024-05-05T11:00:00.000Z", // (NEW, Optional)
+      "usage_count": 1 // (NEW, Optional)
     }
     // ... more accessory images
   ]
   ```
+
+### Get Accessory Image by ID
+- **Description:** Gets details for a single accessory image by its ID.
+- **Method & Endpoint:** `GET /api/accessory-images/{accessoryImageId}`
+- **Auth Required:** Yes
+- **Path Parameters:**
+  - `accessoryImageId` (UUID, required): The ID of the accessory image to fetch.
+- **Example Success Response (200 OK):**
+  ```json
+  {
+    "id": "ad101304-f15d-4a97-9aa3-a108aac59bca",
+    "storage_url": "https://.../accessory-images/.../hat.jpg",
+    "name": "Fedora",
+    "category": "hats",
+    "created_at": "2024-05-02T09:32:38.000Z",
+    "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
+    "tags": ["felt", "brown"], // (NEW, Optional)
+    "description": null, // (NEW, Optional)
+    "is_favorite": true, // (NEW, Optional)
+    "last_used_at": "2024-05-05T11:00:00.000Z", // (NEW, Optional)
+    "usage_count": 1 // (NEW, Optional)
+  }
+  ```
+- **Errors:**
+  - `404 Not Found` if the image does not exist.
+  - `403 Forbidden` if the user does not have access to the image's workspace.
+  - `401 Unauthorized` if the request lacks a valid token.
+
+### Update Accessory Image
+- **Description:** Updates metadata for a specific accessory image.
+- **Method & Endpoint:** `PUT /api/accessory-images/{accessoryImageId}`
+- **Auth Required:** Yes
+- **Path Parameters:**
+  - `accessoryImageId` (UUID, required): The ID of the accessory image to update.
+- **Request Payload (JSON):** Include at least one field to update.
+  ```json
+  {
+    "name": "Brown Leather Handbag", // Optional
+    "category": "bags", // Optional
+    "tags": ["leather", "brown", "handbag"], // Optional
+    "description": "Classic brown leather handbag.", // Optional
+    "is_favorite": false // Optional
+  }
+  ```
+- **Example Success Response (200 OK):** (Returns the full updated accessory image object)
+- **Errors:** (Similar to Model Image update)
 
 ### Upload Accessory Image
 - **Description:** Uploads a new accessory image file.
@@ -912,28 +1187,17 @@ Endpoints for managing reusable model photos and accessory images used in Scene 
 - **Form Data Fields:**
   - `workspaceId` (UUID, required): Workspace to associate the image with.
   - `category` (string, required): The category of the accessory (e.g., `hats`, `bags`, `jewelry`, `shoes`, `scarves`, `other`).
-  - `image` (file, required): The accessory image file.
-  - `name` (string, optional): A user-friendly name for the image.
-- **Example Success Response (201 Created):**
-  ```json
-  {
-    "id": "ad101304-f15d-4a97-9aa3-a108aac59bca",
-    "user_id": "0002676d-f4c3-4713-9860-cf409e57e7d7",
-    "workspace_id": "95d29ad4-47fa-48ee-85cb-cbf762eb400a",
-    "storage_url": "https://.../accessory-images/.../hat.jpg",
-    "name": "Fedora",
-    "category": "hats",
-    "created_at": "2024-05-02T09:32:38.000Z"
-  }
-  ```
+  - `image` (file, required): The accessory image file. File field **must** be named `image`.
+  - `
 
-### Delete Accessory Image
-- **Description:** Deletes a specific accessory image by its ID.
-- **Method & Endpoint:** `DELETE /api/accessory-images/{accessoryImageId}`
-- **Auth Required:** Yes
-- **Request Payload:** None
-- **Example Success Response:** `204 No Content`
 
---- TBD
 
-_This document reflects the API state as used by the Fashion App frontend, mapping concepts onto the existing backend structure as of [Date of Last Update]._ 
+
+  - image Download Option
+  - Image Crop
+  - Sign Up
+  - Mood
+
+  - 5 Image generation Common (Model, clothing (top/bottom), accesory) Different (prompt, pose)
+  - Onbording
+

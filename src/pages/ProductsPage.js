@@ -21,6 +21,7 @@ import {
   Icon,
   Skeleton,
   SkeletonText,
+  ButtonGroup,
 } from '@chakra-ui/react';
 import axios from 'axios'; // Import axios
 // Adjust import paths with correct casing
@@ -50,6 +51,7 @@ export default function ProductsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [garmentTypeFilter, setGarmentTypeFilter] = useState('all');
   // Placeholder - replace with actual workspace context
   const currentWorkspaceId = getMockWorkspaceId(); 
   const { setHeader } = usePageHeader(); // Use hook
@@ -108,14 +110,15 @@ export default function ProductsPage() {
   }, [fetchProducts, setHeader]); 
 
   // --- Add Product Function (with Upload) --- 
-  const handleAddGarmentWithUpload = async ({ name, imageFile }) => {
+  const handleAddGarmentWithUpload = async (garmentData) => {
     const config = getAuthConfig();
-    if (!currentWorkspaceId || !config || !name || !imageFile) {
-        toast({ title: "Cannot add garment", description: "Missing workspace, auth, name, or image file.", status: "error" });
+    const { name, imageFile, garmentType, description, tags, is_favorite } = garmentData;
+
+    if (!currentWorkspaceId || !config || !name || !imageFile || !garmentType) {
+        toast({ title: "Cannot add garment", description: "Missing workspace, auth, name, image file, or garment type.", status: "error" });
         return Promise.reject(new Error("Missing information or auth"));
     }
 
-    // Use a Promise to signal success/failure back to the modal
     return new Promise(async (resolve, reject) => {
       try {
         // Step 1: Upload image
@@ -137,14 +140,29 @@ export default function ProductsPage() {
         }
         console.log("Image uploaded successfully:", imageUrl);
 
-        // Step 2: Create product using the uploaded image URL
-        console.log("Creating product record...");
-        const productPayload = {
-            name,
-            reference_image_url: imageUrl,
-            workspace_id: currentWorkspaceId
-        };
-        const createResponse = await axios.post(`${API_BASE_URL}/api/products`, productPayload, config);
+        // Step 2: Create product using the uploaded image URL and NEW fields
+        console.log("Creating product record via multipart/form-data with new fields...");
+        const productForm = new FormData();
+        productForm.append('name', name.trim());
+        productForm.append('workspace_id', currentWorkspaceId);
+        productForm.append('reference_image_url', imageUrl);
+        productForm.append('garment_type', garmentType);
+        if (description) {
+            productForm.append('description', description);
+        }
+        if (tags && tags.length > 0) {
+            productForm.append('tags', JSON.stringify(tags));
+        }
+        productForm.append('is_favorite', String(is_favorite));
+
+        const createResponse = await axios.post(
+          `${API_BASE_URL}/api/products`,
+          productForm,
+          {
+            ...config,
+            headers: { ...config.headers, 'Content-Type': 'multipart/form-data' },
+          }
+        );
 
         toast({ title: "Garment added successfully!", status: "success", duration: 2000 });
         fetchProducts(false); // Refresh list without full loading spinner
@@ -197,33 +215,65 @@ export default function ProductsPage() {
   };
 
   const handleAddSuccess = () => {
-    fetchProducts(); // Refresh list after adding
+    fetchProducts();
   };
 
-  const filteredProducts = products.filter(p => 
-    (p.name || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredProducts = products.filter(p => {
+    const nameMatch = (p.name || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const typeMatch = garmentTypeFilter === 'all' || p.garment_type === garmentTypeFilter;
+    return nameMatch && typeMatch;
+  });
 
   return (
     <VStack spacing={6} align="stretch">
       <Flex mb={6} align="center" wrap="wrap" gap={4}>
-        {/* Removed Heading here, handled by Layout */}
-        {/* <Heading size="lg">Base Garments</Heading> */}
-        <Spacer />
-        <InputGroup maxW={{ base: '100%', sm: '250px' }}>
+        {/* Filter Buttons */}
+        <ButtonGroup size="sm" isAttached variant="outline" mr={4}>
+            <Button
+                onClick={() => setGarmentTypeFilter('all')}
+                isActive={garmentTypeFilter === 'all'}
+            >
+                All
+            </Button>
+            <Button
+                onClick={() => setGarmentTypeFilter('top')}
+                isActive={garmentTypeFilter === 'top'}
+            >
+                Tops
+            </Button>
+            <Button
+                onClick={() => setGarmentTypeFilter('bottom')}
+                isActive={garmentTypeFilter === 'bottom'}
+            >
+                Bottoms
+            </Button>
+            {/* Add 'other' if needed */}
+            {/* <Button 
+                 onClick={() => setGarmentTypeFilter('other')}
+                 isActive={garmentTypeFilter === 'other'}
+             >
+                 Other
+             </Button> */}
+        </ButtonGroup>
+
+        {/* Search Input */}
+        <InputGroup maxW={{ base: 'full', sm: '250px' }} flexGrow={1}>
           <InputLeftElement pointerEvents="none">
-             <Icon as={FaSafari} color="gray.400" /> 
+             <Icon as={FaSafari} color="gray.400" />
           </InputLeftElement>
-          <Input 
-              placeholder="Search apparel..." // Updated placeholder
-              value={searchTerm} 
-              onChange={(e) => setSearchTerm(e.target.value)} 
+          <Input
+              placeholder="Search apparel..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               borderRadius="md"
           />
         </InputGroup>
-        {/* Apply gradient style to button */}
-        <Button 
-          leftIcon={<FaPlus />} 
+
+        <Spacer />
+
+        {/* Add Apparel Button */}
+        <Button
+          leftIcon={<FaPlus />}
           onClick={onAddModalOpen}
           // Add custom styling
           bgGradient="linear(to-r, teal.400, purple.500, blue.500)"
@@ -242,7 +292,7 @@ export default function ProductsPage() {
           transition="all 0.25s cubic-bezier(.08,.52,.52,1)"
           borderRadius="md"
         >
-          Add Apparel 
+          Add Apparel
         </Button>
       </Flex>
 
@@ -262,19 +312,20 @@ export default function ProductsPage() {
         </Alert>
       ) : filteredProducts.length > 0 ? (
         <SimpleGrid columns={{ base: 2, sm: 3, md: 4, lg: 5, xl: 6 }} spacing={6}>
-          {filteredProducts.map(product => (
+          {filteredProducts.map((product) => (
             <GarmentCard 
-                key={product.id} 
-                garment={product} 
-                onDelete={() => handleDeleteGarment(product.id)} // Pass delete handler 
+              key={product.id} 
+              garment={product} 
             />
           ))}
         </SimpleGrid>
-      ) : ( // Empty state
+      ) : (
         <Center p={10} borderWidth="1px" borderRadius="md" borderStyle="dashed">
            <Heading size="md" color="gray.500">
-             {/* Updated empty state text */}
-             {searchTerm ? `No apparel found matching "${searchTerm}"` : 'Your virtual closet is empty.'}
+             {searchTerm || garmentTypeFilter !== 'all'
+                ? `No apparel found matching criteria.`
+                : 'No apparel items yet.'
+             }
            </Heading>
         </Center>
       )}
@@ -282,7 +333,6 @@ export default function ProductsPage() {
       <AddGarmentModal 
         isOpen={isAddModalOpen} 
         onClose={onAddModalClose} 
-        // Ensure the prop name matches what the modal expects (onAddGarmentWithUpload)
         onAddGarmentWithUpload={handleAddGarmentWithUpload} 
       />
     </VStack>

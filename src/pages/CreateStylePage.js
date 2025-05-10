@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useContext, useRef } from 'react';
 import {
   Box,
   Heading,
@@ -41,7 +41,7 @@ import {
 } from '@chakra-ui/react';
 import { useLocation, useNavigate } from 'react-router-dom';
 // Make sure react-icons is installed: npm install react-icons
-import { FaUndo, FaImage, FaMagic, FaTshirt, FaSquare, FaMobileAlt, FaStar, FaRegStar, FaHeart, FaRegHeart, FaFolderPlus, FaTimes, FaCheckCircle, FaBoxOpen, FaUser, FaShoppingBag, FaUserCircle } from 'react-icons/fa'; 
+import { FaUndo, FaImage, FaMagic, FaTshirt, FaSquare, FaMobileAlt, FaStar, FaRegStar, FaHeart, FaRegHeart, FaFolderPlus, FaTimes, FaCheckCircle, FaBoxOpen, FaUser, FaShoppingBag, FaUserCircle, FaHourglassHalf, FaPlus, FaCopy, FaPen, FaUserCheck, FaUserSlash, FaMinus } from 'react-icons/fa'; 
 // import StyleCard from '../../components/styles/StyleCard'; // Removed - Not used directly here
 import GarmentSelectionModal from '../components/Modals/GarmentSelectionModal'; // Adjusted path
 import ModelSelectionModal from '../components/Modals/ModelSelectionModal'; // Adjusted path
@@ -60,7 +60,7 @@ import { usePageHeader } from '../components/Layout/DashboardLayout'; // Import 
 // TODO: Move to config
 const API_BASE_URL = 'https://productmarketing-ai-f0e989e4e1ad.herokuapp.com';
 const POLLING_INTERVAL = 3000; // 3 seconds
-const MAX_POLLING_ATTEMPTS = 20; // Approx 1 minute timeout
+const MAX_POLLING_ATTEMPTS = 10; // Approx 30 seconds timeout
 
 // TODO: Replace with actual workspace ID from context/state management
 const getMockWorkspaceId = () => '95d29ad4-47fa-48ee-85cb-cbf762eb400a';
@@ -219,19 +219,21 @@ function CreateStylePage() {
   const { isOpen: isAddToCollectionOpen, onOpen: onAddToCollectionOpen, onClose: onAddToCollectionClose } = useDisclosure();
 
   const [mode, setMode] = useState('text');
-  const [selectedGarment, setSelectedGarment] = useState(null);
+  const [selectedTopGarment, setSelectedTopGarment] = useState(null); // Top garment selection
+  const [selectedBottomGarment, setSelectedBottomGarment] = useState(null); // Bottom garment selection
+  const [activeGarmentSlot, setActiveGarmentSlot] = useState(null); // 'top' or 'bottom' slots for Garment modal context
   const [selectedModel, setSelectedModel] = useState(null);
   const [selectedAccessories, setSelectedAccessories] = useState([]);
   const [uploadedImage, setUploadedImage] = useState(null); // Stores { id, name, url }
-  const [selectedPose, setSelectedPose] = useState(null);
+  const [selectedPoseId, setSelectedPoseId] = useState(null); // Renamed state, stores ID only
   const [selectedMood, setSelectedMood] = useState(null);
   const [selectedViews, setSelectedViews] = useState([]); // Stores array of view objects
   const [prompt, setPrompt] = useState('');
-  const [generationState, setGenerationState] = useState('idle'); // idle, generating, results
+  const [generationState, setGenerationState] = useState('idle'); // idle, generating, results, timed_out_checking
   const [results, setResults] = useState([]); // Stores array of generated asset-like objects
   const [error, setError] = useState(null);
   const [generationSettings, setGenerationSettings] = useState({
-      aspectRatio: '1:1',
+      aspectRatio: '9:16',
       quality: 'standard',
   });
   const [expandedSetting, setExpandedSetting] = useState(null); // null, 'aspectRatio', 'quality'
@@ -242,6 +244,23 @@ function CreateStylePage() {
   const [pollingAttempts, setPollingAttempts] = useState(0);
   const [selectedAssetForCollection, setSelectedAssetForCollection] = useState(null);
   const [pollingIntervalId, setPollingIntervalId] = useState(null); // Store interval ID
+  const [isUploadingImage, setIsUploadingImage] = useState(false); // For uploading indicator
+
+  // --- Batch Generation State ---
+  const [numberOfLooks, setNumberOfLooks] = useState(3); // Default to 3 looks
+  const initialBatchItem = () => ({
+    id: `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Unique ID for key prop
+    prompt: '',
+    selectedPose: null, // Changed from poseId to selectedPose object
+    jobId: null,
+    status: 'idle', // idle, generating, results, timed_out_checking, failed
+    result: null, // Stores the asset object
+    pollingAttempts: 0,
+    error: null, // Added error field for per-item errors
+  });
+  const [generationBatch, setGenerationBatch] = useState(() => Array(numberOfLooks).fill(null).map(() => initialBatchItem()));
+  const [activeBatchSlotIndex, setActiveBatchSlotIndex] = useState(0); // Default to the first slot being active
+  const batchPollingIntervalsRef = useRef({}); // Ref for storing polling interval IDs for batch items
 
   // --- Hooks called at top level --- 
   const placeholderBg = useColorModeValue('gray.100', 'gray.700');
@@ -250,6 +269,10 @@ function CreateStylePage() {
   const hoverBg = useColorModeValue('gray.100', 'gray.700'); // Re-used for hover states
   const settingCardBg = useColorModeValue('white', 'gray.700');
   const settingCardHoverBg = useColorModeValue('gray.50', 'gray.600');
+  const activeBatchItemBackground = useColorModeValue('gray.50', 'gray.700'); // For the active batch item details
+  const selectedPoseBg = useColorModeValue('purple.50', 'purple.800');
+  const selectedPoseBorderColor = useColorModeValue('purple.300', 'purple.600');
+  const selectedPoseIconColor = useColorModeValue('purple.600', 'purple.200');
   
   // --- Auth Helper ---
   const getAuthConfig = useCallback(() => {
@@ -266,9 +289,9 @@ function CreateStylePage() {
 
   // --- Options ---
   const modeOptions = [
-    { value: 'text', label: 'Text Only', icon: FaMagic },
-    { value: 'garment', label: 'Use Garment', icon: FaTshirt },
-    { value: 'image', label: 'Upload Image', icon: FaImage },
+    { value: 'text', label: 'Text', icon: FaMagic },
+    { value: 'garment', label: 'Garment', icon: FaTshirt },
+    { value: 'batch', label: 'Batch', icon: FaCopy },
   ];
   const aspectRatioOptions = [
     { value: '1:1', label: 'Square', icon: FaSquare },
@@ -286,8 +309,11 @@ function CreateStylePage() {
     value: mode,
     onChange: newMode => {
       setMode(newMode);
-      if (newMode !== 'garment') setSelectedGarment(null);
       if (newMode !== 'image') setImageFile(null);
+      if (newMode !== 'batch') {
+        // Optionally reset batch state if switching away from batch mode
+        // setGenerationBatch(Array(5).fill(null).map(() => initialBatchItem()));
+      }
     },
   });
   const { getRootProps: getAspectRootProps, getRadioProps: getAspectRadioProps } = useRadioGroup({
@@ -307,9 +333,150 @@ function CreateStylePage() {
     },
   });
 
-  // --- Effects ---
+  // --- Define Polling Function with useCallback --- 
+  const pollStatus = useCallback(async (currentJobId, intervalIdToClear) => {
+    const config = getAuthConfig();
+    if (!currentJobId || !config) {
+        console.log("Polling stopped: No job ID or auth config.");
+         if (intervalIdToClear) clearInterval(intervalIdToClear); // Clear interval if stopping
+         setPollingIntervalId(null);
+         return;
+    }
+
+    console.log(`Polling job ${currentJobId}, attempt ${pollingAttempts + 1}`); // Use pollingAttempts state here
+
+    if (pollingAttempts >= MAX_POLLING_ATTEMPTS) { 
+        console.warn("Polling timed out from frontend perspective.");
+        // Don't set error, just change state and stop polling
+        setGenerationState('timed_out_checking'); 
+        toast({ 
+          title: "Still Working...", 
+          description: "Generation is taking longer than expected. You can view your generation status in the Generations page.", 
+          status: "warning", 
+          duration: 5000 
+        });
+        setJobId(null);
+        if (intervalIdToClear) clearInterval(intervalIdToClear); // Clear interval on timeout
+        setPollingIntervalId(null);
+        return;
+    }
+
+    try {
+        const pollResponse = await axios.get(`${API_BASE_URL}/api/generate/${currentJobId}`, config);
+        const status = pollResponse.data?.status;
+        const assetId = pollResponse.data?.assetId;
+        const errorMsg = pollResponse.data?.error;
+
+        if (status === 'completed' && assetId) {
+            console.log("Generation completed! Asset ID:", assetId);
+            setJobId(null); // Stop polling
+            if (intervalIdToClear) clearInterval(intervalIdToClear);
+            setPollingIntervalId(null);
+            try {
+                const assetResponse = await axios.get(`${API_BASE_URL}/api/assets/${assetId}`, config);
+                setResults([assetResponse.data]);
+                setGenerationState('results');
+                console.log("Final asset data fetched:", assetResponse.data);
+            } catch (fetchErr) {
+                console.error("Failed to fetch final asset:", fetchErr);
+                setError(fetchErr.response?.data?.message || "Generation complete, but failed to fetch the result.");
+                setGenerationState('idle');
+                toast({ title: "Result Fetch Error", description: "Failed to load the generated look.", status: "error" });
+            }
+        } else if (status === 'failed') {
+            console.error("Generation job failed:", errorMsg);
+            setError(errorMsg || "Generation failed for an unknown reason.");
+            setGenerationState('idle');
+            setJobId(null); // Stop polling
+            if (intervalIdToClear) clearInterval(intervalIdToClear);
+            setPollingIntervalId(null);
+            toast({ title: "Generation Failed", description: errorMsg || "Please try again.", status: "error" });
+        } else {
+            // Still pending or processing, increment attempts for next poll
+            setPollingAttempts(prev => prev + 1); 
+            // Schedule the next poll (the useEffect will handle this based on state change)
+        }
+    } catch (pollError) {
+        console.error("Polling error:", pollError);
+        setPollingAttempts(prev => prev + 1); // Increment to eventually timeout
+        // Optionally add logic to stop after several consecutive poll errors
+    }
+  }, [getAuthConfig, pollingAttempts, toast, setResults, setGenerationState, setError, setJobId, setPollingIntervalId]); // Add dependencies
+
+  // --- NEW: Effect to handle Remix Data or Remix Asset ---
+  useEffect(() => {
+    console.log('CreateStylePage mounted. Checking location state:', location.state);
+    const { remixAsset } = location.state || {}; // Focus on remixAsset
+
+    if (remixAsset) {
+      console.log("Applying remixAsset data:", JSON.stringify(remixAsset, null, 2)); // Log the received object
+      // Determine mode based on input_details
+      const inputs = remixAsset.input_details || {};
+      let inferredMode = 'text';
+      if (inputs.input_image) inferredMode = 'image';
+      else if (inputs.top_garment || inputs.bottom_garment || inputs.model) inferredMode = 'garment';
+      setMode(inferredMode);
+
+      // Prefill prompt and negative
+      setPrompt(remixAsset.prompt || '');
+      // Prefill settings if available
+      if (remixAsset.aspect_ratio) {
+          console.log("Attempting to set aspectRatio from remixAsset:", remixAsset.aspect_ratio);
+          setGenerationSettings(s => {
+              const newSettings = { ...s, aspectRatio: remixAsset.aspect_ratio };
+              console.log("Updated generationSettings with aspectRatio:", newSettings);
+              return newSettings;
+          });
+      } else {
+           console.log("No aspect_ratio found on remixAsset.");
+      }
+      if (remixAsset.quality) {
+          console.log("Attempting to set quality from remixAsset:", remixAsset.quality);
+          setGenerationSettings(s => {
+               const newSettings = { ...s, quality: remixAsset.quality };
+               console.log("Updated generationSettings with quality:", newSettings);
+               return newSettings;
+          });
+      } else {
+           console.log("No quality found on remixAsset.");
+      }
+
+      // Prefill selections
+      if (inputs.model) setSelectedModel(inputs.model);
+      if (inputs.pose) setSelectedPoseId(inputs.pose.id);
+      if (inputs.accessories) setSelectedAccessories(inputs.accessories);
+      if (inputs.top_garment) setSelectedTopGarment(inputs.top_garment);
+      if (inputs.bottom_garment) setSelectedBottomGarment(inputs.bottom_garment);
+      if (inputs.input_image) {
+        setMode('image');
+        setUploadedImage({ id: inputs.input_image.id, name: inputs.input_image.name || '', url: inputs.input_image.storage_url });
+      }
+
+      // Clear the state from navigation
+      navigate('.', { replace: true, state: {} });
+      toast({ title: 'Remix applied!', description: 'Inputs pref-filled.', status: 'info', duration: 3000 });
+      return; // Exit early after processing remixAsset
+    }
+    // Optional: Handle legacy remixData if needed, or remove this block
+    // else if (location.state?.remixData) { ... }
+    
+  }, [location.state, navigate, toast]); // Keep dependencies minimal
+
+  // --- Effects (place after function definitions they use) --- 
   // Effect to handle preselected garment OR initial mode from navigation state
   useEffect(() => {
+    // **** IMPORTANT: Check if remix data was just processed ****
+    // If remix data was present in the initial location.state, the effect above 
+    // would have cleared it. If location.state is now empty, we can assume 
+    // remix logic handled it (or there was nothing to handle). 
+    // This prevents this effect from overriding remix settings.
+    if (!location.state || Object.keys(location.state).length === 0) {
+        console.log("Skipping garment/initialMode effect, state is empty (likely handled by remix or empty).");
+        return; 
+    }
+
+    // Original logic for single garment or initial mode (if remixData wasn't present)
+    console.log("Processing garment/initialMode state:", location.state);
     const { selectedGarmentId, initialMode } = location.state || {}; // Destructure state
     const config = getAuthConfig(); // Get auth config
     let stateProcessed = false; // Flag to ensure we clear state only once
@@ -337,7 +504,7 @@ function CreateStylePage() {
         const garment = response.data;
         
         if (garment) {
-          setSelectedGarment(garment); 
+          setSelectedTopGarment(garment); 
           console.log("Preselected garment fetched and set:", garment);
           if (!prompt) { // Only prefill prompt if it's empty
             setPrompt(`Model wearing the '${garment.name}'...`);
@@ -399,20 +566,44 @@ function CreateStylePage() {
     return () => URL.revokeObjectURL(objectUrl);
   }, [imageFile]);
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       // Basic type check
       if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
           toast({ title: "Invalid File Type", description: "Please select a PNG, JPG, or WEBP image.", status: "error" });
           setImageFile(null);
-          e.target.value = null; // Attempt to clear input
+        e.target.value = null;
           return;
       }
       setImageFile(file);
-      setMode('image'); // Switch mode automatically when image is selected
+      setMode('image');
+      // Immediately upload the reference image
+      const config = getAuthConfig();
+      if (!config) return;
+      const formData = new FormData();
+      formData.append('workspaceId', currentWorkspaceId);
+      formData.append('image', file);
+      try {
+        setIsUploadingImage(true);
+        const uploadRes = await axios.post(
+          `${API_BASE_URL}/api/input-images/upload`,
+          formData,
+          { ...config, headers: { ...config.headers, 'Content-Type': 'multipart/form-data' } }
+        );
+        // Assuming response has id and storage_url
+        setUploadedImage({ id: uploadRes.data.id, name: file.name, url: uploadRes.data.storage_url || uploadRes.data.image_url });
+      } catch (uploadErr) {
+        console.error('Image upload failed:', uploadErr);
+        const msg = uploadErr.response?.data?.message || 'Image upload failed.';
+        toast({ title: 'Upload Error', description: msg, status: 'error' });
+        setUploadedImage(null);
+      } finally {
+        setIsUploadingImage(false);
+      }
     } else {
       setImageFile(null);
+      setUploadedImage(null);
     }
   };
 
@@ -422,198 +613,182 @@ function CreateStylePage() {
       fileInput?.click(); // Trigger click on the hidden/styled input
   };
 
+  // --- NEW: Batch Generation Initiation ---
+  const initiateBatchGeneration = async () => {
+    const config = getAuthConfig();
+    if (!config) {
+      toast({ title: "Authentication Error", description: "Cannot start batch generation.", status: "error", duration: 5000, isClosable: true });
+      return;
+    }
+
+    // Show a general toast that batch generation has started
+    toast({ title: "Batch Generation Started", description: `Initiating ${generationBatch.length} look(s). You can monitor progress in the 'Define Your Looks' section.`, status: "info", duration: 7000, isClosable: true });
+
+    // Helper to derive garment_focus, adapted from single handleVisualize
+    let garmentFocus;
+    if (selectedTopGarment?.id && selectedBottomGarment?.id) {
+      garmentFocus = 'both';
+    } else if (selectedTopGarment?.id) {
+      garmentFocus = 'top';
+    } else if (selectedBottomGarment?.id) {
+      garmentFocus = 'bottom';
+    }
+
+    // Helper to derive size, adapted from single handleVisualize
+    let apiSize = "1024x1024"; // Default
+    if (generationSettings.aspectRatio === '1:1') apiSize = "1024x1024";
+    else if (generationSettings.aspectRatio === '9:16') apiSize = "1024x1536";
+    else if (generationSettings.aspectRatio === '16:9') apiSize = "1536x1024";
+    
+    // Create a new array for updates to avoid direct state mutation in loop
+    let updatedBatch = [...generationBatch];
+
+    for (let i = 0; i < generationBatch.length; i++) {
+      const batchItem = generationBatch[i];
+
+      // Skip if prompt is empty for this look, or if already processing/done
+      if (!batchItem.prompt || !batchItem.prompt.trim()) {
+        updatedBatch[i] = { ...batchItem, status: 'failed', error: 'Prompt is empty for this look.' };
+        setGenerationBatch([...updatedBatch]); // Early update for this item
+        toast({ title: `Look ${i + 1} Skipped`, description: "Prompt is empty.", status: "warning", duration: 3000 });
+        continue;
+      }
+      if (batchItem.status === 'generating' || batchItem.status === 'results') {
+          console.log(`Skipping Look ${i+1} as it's already generating or has results.`);
+          continue;
+      }
+
+
+      const payload = {
+        workspace_id: currentWorkspaceId,
+        prompt: batchItem.prompt.trim(),
+        n: 1,
+        model: 'gpt-image-1', // As per current single generation logic
+        model_image_id: selectedModel?.id,
+        top_product_id: selectedTopGarment?.id,
+        bottom_product_id: selectedBottomGarment?.id,
+        accessory_image_ids: selectedAccessories.length > 0 ? selectedAccessories.map(acc => acc.id) : undefined,
+        pose_image_id: batchItem.selectedPose?.id,
+        garment_focus: garmentFocus,
+        size: apiSize,
+        // quality can be passed if API supports, e.g., quality: generationSettings.quality
+      };
+
+      // Update status to 'generating' optimistically for this item
+      updatedBatch[i] = { ...batchItem, status: 'generating', jobId: null, pollingAttempts: 0, error: null };
+      setGenerationBatch([...updatedBatch]); // Update UI to show "generating" for this item
+
+      try {
+        const response = await axios.post(`${API_BASE_URL}/api/generate`, payload, config);
+        // Update the specific item with its jobId
+        updatedBatch[i] = { ...updatedBatch[i], jobId: response.data.jobId, status: 'generating' }; // Ensure status is generating
+        console.log(`Batch Look ${i + 1} initiated. Job ID: ${response.data.jobId}`);
+      } catch (err) {
+        console.error(`Generation request failed for batch item ${i + 1}:`, err);
+        const errorMsg = err.response?.data?.message || `Failed to start generation for Look ${i + 1}.`;
+        updatedBatch[i] = { ...updatedBatch[i], status: 'failed', error: errorMsg, jobId: null };
+        toast({ title: `Look ${i + 1} Failed`, description: errorMsg, status: "error", duration: 5000 });
+      }
+      // Set the batch state after each API call attempt to reflect changes incrementally
+      setGenerationBatch([...updatedBatch]);
+    }
+    // Final update to ensure all changes are captured if any loop iterations were skipped
+    // setGenerationBatch(updatedBatch); // This might be redundant if updated inside loop correctly
+  };
+
   // --- Generation Logic --- 
   const handleVisualize = async () => {
+    // If in batch mode, delegate to the new batch handler
+    if (mode === 'batch') {
+      initiateBatchGeneration();
+      return;
+    }
+
+    // Existing single generation logic
     setError(null);
     setResults([]);
     setJobId(null);
     setPollingAttempts(0);
-    if (pollingIntervalId) clearTimeout(pollingIntervalId); // Use clearTimeout for IDs from setTimeout
+    if (pollingIntervalId) clearInterval(pollingIntervalId);
     setPollingIntervalId(null);
 
     const config = getAuthConfig();
-    if (!currentWorkspaceId || !config) {
-      setError("Workspace ID or Authentication missing.");
+    if (!config) {
+        toast({ title: "Authentication Error", status: "error" });
+        setGenerationState('idle');
       return;
     }
 
-    if (!prompt.trim()) {
-        toast({ title: "Prompt Required", description: "Please enter a prompt describing the look.", status: "warning"});
-        return;
-    }
-
-    // --- Determine Mode based on NEW Prioritization (Mode 5 > 4 > 2 > 3 > 1) --- 
-    let effectiveMode = 'text';
+    // --- Build Payload - Always for gpt-image-1 ---
     let payload = {
-        prompt: prompt,
         workspace_id: currentWorkspaceId,
-        // Base settings - these might be modified/deleted based on the mode
-        size: "1024x1024", // Default - API doc suggests DALL-E 2 modes use this or others
-        aspect_ratio: generationSettings.aspectRatio, // Often ignored by DALL-E 2 modes
-        quality: generationSettings.quality, // Often ignored by DALL-E 2 modes
-        n: 1, 
+        prompt: prompt.trim(),
+        n: 1, // Default number of images
+        model: 'gpt-image-1', // <<< Hardcode model
+
+        // Include all potential gpt-image-1 fields, 
+        // values will be null/undefined if not selected
+        model_image_id: selectedModel?.id, 
+        top_product_id: selectedTopGarment?.id,
+        bottom_product_id: selectedBottomGarment?.id,
+        accessory_image_ids: selectedAccessories.length > 0 ? selectedAccessories.map(acc => acc.id) : undefined,
+        pose_image_id: selectedPoseId, // Pose ID is already stored
     };
 
-    // 1. Mode 5 (Combined Scene)? (Model + Garment + Optional Accessories)
-    if (selectedModel && selectedGarment) {
-        effectiveMode = 'combined_scene'; // Mode 5
-        payload.model_image_id = selectedModel.id;
-        payload.product_id = selectedGarment.id;
-        if (selectedAccessories.length > 0) {
-            payload.accessory_image_ids = selectedAccessories.map(acc => acc.id);
-        }
-        // Per docs, DALL-E 2 based, ignores quality, aspect_ratio, input_image_id, pose, mood
-        delete payload.quality;
-        delete payload.aspect_ratio;
-        // Set size appropriate for this DALL-E 2 multi-image edit mode if needed
-        payload.size = "1024x1024"; // Example, check API doc for specific sizes
-
-    // 2. Mode 4 (Scene)? (Model only + Optional Accessories)
-    } else if (selectedModel && !selectedGarment) {
-        effectiveMode = 'scene'; // Mode 4
-        payload.model_image_id = selectedModel.id;
-        if (selectedAccessories.length > 0) {
-            payload.accessory_image_ids = selectedAccessories.map(acc => acc.id);
-        }
-        // Per docs, DALL-E 2 based, ignores quality, aspect_ratio, product_id, input_image_id, pose, mood
-        delete payload.quality;
-        delete payload.aspect_ratio;
-        payload.size = "1024x1024"; // Example, check API doc
-
-    // 3. Mode 2 (Product Edit)? (Garment only)
-    } else if (selectedGarment && !selectedModel) {
-        effectiveMode = 'product_edit'; // Mode 2
-        payload.product_id = selectedGarment.id;
-        // Per docs, DALL-E 2 based, ignores quality, aspect_ratio, model_image_id, input_image_id
-        delete payload.quality;
-        delete payload.aspect_ratio;
-        payload.size = "1024x1024"; // Example, check API doc
-
-    // 4. Mode 3 (Image Edit)? (Uploaded Image only)
-    } else if (uploadedImage && !selectedModel && !selectedGarment) { 
-        effectiveMode = 'image_edit'; // Mode 3
-        payload.input_image_id = uploadedImage.id; // Ensure uploadedImage state has the ID
-        // Per docs, DALL-E 2 based, ignores quality, aspect_ratio, product_id, model_image_id
-        delete payload.quality;
-        delete payload.aspect_ratio;
-        payload.size = "1024x1024"; // Example, check API doc
-    
-    // 5. Mode 1 (Text-to-Image)
+    // Determine garment focus
+    if (payload.top_product_id && payload.bottom_product_id) {
+        payload.garment_focus = 'both';
+    } else if (payload.top_product_id) {
+        payload.garment_focus = 'top';
+    } else if (payload.bottom_product_id) {
+        payload.garment_focus = 'bottom';
     } else {
-        effectiveMode = 'text'; // Mode 1
-        // Keep DALL-E 3 params (quality, aspect_ratio)
-        // Adjust size based on aspect ratio for DALL-E 3
-        if (generationSettings.aspectRatio === "1792x1024" || generationSettings.aspectRatio === "1024x1792") {
-             payload.size = generationSettings.aspectRatio; 
-        } else {
-             payload.size = "1024x1024"; // Default for 1:1
-        } 
-        // payload.model = "dall-e-3"; // Can explicitly set if needed, or rely on backend default
+        // If no specific garment selected, maybe default focus or remove?
+        // For now, let's not set it if no garments are selected.
+        // delete payload.garment_focus; // Or let backend handle missing field
     }
 
-    console.log(`Effective Mode Determined: ${effectiveMode}`);
-    console.log("Final Generation Payload:", payload);
+    // Size for gpt-image-1 (adjust based on aspect ratio)
+    if (generationSettings.aspectRatio === '1:1') payload.size = "1024x1024";
+    else if (generationSettings.aspectRatio === '9:16') payload.size = "1024x1536"; // Check API doc for exact supported sizes
+    else if (generationSettings.aspectRatio === '16:9') payload.size = "1536x1024"; // Check API doc for exact supported sizes
+    else payload.size = "1024x1024"; // Default fallback
 
-    setGenerationState('generating');
+    // --- Remove the previous conditional model selection logic --- 
+    /* 
+    let selectedModelName = ''; 
+    if (selectedModel) { ... } 
+    else if (mode === 'image' && uploadedImage) { ... } 
+    else if (mode === 'garment' && ...) { ... } 
+    else { ... }
+    payload.model = selectedModelName;
+    */
+
+    // --- Remove the cleanup logic for different models --- 
+    /*
+    if (payload.model !== 'dall-e-3') { ... }
+    if (payload.model !== 'gpt-image-1') { ... }
+    if (payload.model !== 'dall-e-2') { ... }
+    */
+
+    console.log("API Payload (Forced gpt-image-1):", payload);
 
     try {
-      // Submit generation job
-      const generateResponse = await axios.post(`${API_BASE_URL}/api/generate`, payload, config);
-      const currentJobId = generateResponse.data?.jobId;
-
-      if (!currentJobId) {
-          throw new Error("Generation request accepted, but no Job ID was returned.");
-      }
-      setJobId(currentJobId);
-      console.log("Generation job submitted, Job ID:", currentJobId);
-
-      // Start Polling (handled by useEffect)
-      setPollingAttempts(1);
+      setGenerationState('generating');
+      const response = await axios.post(`${API_BASE_URL}/api/generate`, payload, config);
+      setJobId(response.data.jobId);
+      // Start polling logic (or handle via WebSocket)
+      // ... existing polling logic ...
 
     } catch (err) {
-      console.error("Generation process failed:", err);
-      const errorMsg = err.response?.data?.message || err.message || "Failed to start generation.";
+       console.error("Generation request failed:", err);
+      const errorMsg = err.response?.data?.message || "Failed to start generation job.";
       setError(errorMsg);
-      setGenerationState('idle'); // Reset state on failure
-      toast({ title: "Generation Error", description: errorMsg, status: "error", duration: 5000 });
+      toast({ title: "Generation Error", description: errorMsg, status: "error" });
+                    setGenerationState('idle');
+      setJobId(null);
     }
   };
-
-  // --- Polling Logic --- 
-  useEffect(() => {
-    let intervalId = null;
-
-    const pollStatus = async () => {
-        const config = getAuthConfig();
-        if (!jobId || !config || generationState !== 'generating') {
-             return; // Exit if no job ID, no auth, or not in generating state
-        }
-
-        console.log(`Polling job ${jobId}, attempt ${pollingAttempts}`);
-
-        if (pollingAttempts > MAX_POLLING_ATTEMPTS) {
-            console.error("Polling timed out.");
-            setError("Generation took too long to complete. Please try again later.");
-            setGenerationState('idle');
-            setJobId(null);
-            toast({ title: "Timeout", description: "Generation took too long.", status: "warning" });
-            return;
-        }
-
-        try {
-            const pollResponse = await axios.get(`${API_BASE_URL}/api/generate/${jobId}`, config);
-            const status = pollResponse.data?.status;
-            const assetId = pollResponse.data?.assetId;
-            const errorMsg = pollResponse.data?.error;
-
-            if (status === 'completed' && assetId) {
-                console.log("Generation completed! Asset ID:", assetId);
-                setJobId(null); // Stop polling
-                // Fetch the final asset details
-                try {
-                  const assetResponse = await axios.get(`${API_BASE_URL}/api/assets/${assetId}`, config);
-                  setResults([assetResponse.data]); // Assuming single result for now
-                  setGenerationState('results');
-                  console.log("Final asset data fetched:", assetResponse.data);
-                } catch (fetchErr) {
-                    console.error("Failed to fetch final asset:", fetchErr);
-                    setError(fetchErr.response?.data?.message || "Generation complete, but failed to fetch the result.");
-                    setGenerationState('idle');
-                    toast({ title: "Result Fetch Error", description: "Failed to load the generated look.", status: "error" });
-                }
-            } else if (status === 'failed') {
-                console.error("Generation job failed:", errorMsg);
-                setError(errorMsg || "Generation failed for an unknown reason.");
-                setGenerationState('idle');
-                setJobId(null); // Stop polling
-                toast({ title: "Generation Failed", description: errorMsg || "Please try again.", status: "error" });
-            } else {
-                // Still pending or processing, increment attempts for next poll
-                setPollingAttempts(prev => prev + 1); 
-            }
-        } catch (pollError) {
-            console.error("Polling error:", pollError);
-            // Don't stop polling on transient network errors, but maybe after a few?
-            // For now, we just let the max attempts handle persistent errors.
-            setPollingAttempts(prev => prev + 1); // Increment to eventually timeout
-        }
-    };
-
-    if (jobId && generationState === 'generating') {
-      // Use setTimeout for interval to allow immediate first check if needed
-      intervalId = setTimeout(pollStatus, pollingAttempts === 1 ? 500 : POLLING_INTERVAL); // Poll quickly first time
-    }
-
-    // Cleanup function to clear timeout
-    return () => {
-        if (intervalId) {
-            clearTimeout(intervalId);
-        }
-    };
-  // Dependencies: jobId changes trigger polling start/stop
-  // pollingAttempts changes trigger the next poll
-  // generationState ensures polling only happens when 'generating'
-  }, [jobId, generationState, pollingAttempts, getAuthConfig, toast]);
 
   // --- Like Handler for Results --- 
   const handleLikeToggleResult = async (assetToToggle) => {
@@ -659,12 +834,13 @@ function CreateStylePage() {
   const handleStartOver = () => {
     setPrompt('');
     setMode('text');
-    setSelectedGarment(null);
+    setSelectedTopGarment(null);
+    setSelectedBottomGarment(null);
     setImageFile(null);
     setPreviewUrl(null);
     setSelectedModel(null);
     setSelectedAccessories([]);
-    setSelectedPose(null);
+    setSelectedPoseId(null);
     setSelectedMood(null);
     setSelectedViews([]);
     setGenerationState('idle');
@@ -672,7 +848,7 @@ function CreateStylePage() {
     setError(null);
     setJobId(null);
     setPollingAttempts(0);
-    setGenerationSettings({ aspectRatio: '1:1', quality: 'standard' });
+    setGenerationSettings({ aspectRatio: '9:16', quality: 'standard' });
     setExpandedSetting(null);
     // Clear file input visually if needed (can be tricky)
     const fileInput = document.getElementById('image-upload-input'); // Assuming input has this ID
@@ -681,31 +857,98 @@ function CreateStylePage() {
 
   // --- Modal Selection Handlers --- 
   const handleSelectGarment = (garment) => {
-      setSelectedGarment(garment);
-    // If a garment is selected, implicitly switch mode if needed?
-    // setMode('garment'); // Or let selections override mode implicitly
+    // Assign garment to the active slot (top or bottom)
+    if (activeGarmentSlot === 'top') {
+      setSelectedTopGarment(garment);
+    } else if (activeGarmentSlot === 'bottom') {
+      setSelectedBottomGarment(garment);
+    }
+    setActiveGarmentSlot(null);
       onGarmentModalClose();
   };
-  const handleSelectModel = (model) => { 
-    setSelectedModel(model); 
-    // If a model is selected, switch to scene mode? 
-    // setMode('scene'); // Let's handle mode in handleVisualize
-    onModelModalClose(); 
+  const handleSelectModel = (model) => { setSelectedModel(model); onModelModalClose(); }; 
+  const handleSelectAccessories = (accessories) => { setSelectedAccessories(accessories); onAccessoryModalClose(); }; // Expects array
+  const handleSelectPrompt = ({ prompt: newPrompt }) => { setPrompt(newPrompt); onPromptModalClose(); };
+  const handleSelectPose = (poseId) => { setSelectedPoseId(poseId); onPoseModalClose(); }; // Updated handler to accept ID
+  const handleSelectMood = (mood) => { 
+    setSelectedMood(mood);
+    if (mood && mood.name) {
+      setPrompt(prevPrompt => {
+        const moodText = `mood: ${mood.name}`;
+        if (prevPrompt.trim() === '') {
+          return moodText;
+        } else {
+          // Check if a mood is already in the prompt
+          const moodRegex = /,?\s*mood:\s*[^,]+/; // Matches ", mood: ..." or "mood: ..."
+          if (moodRegex.test(prevPrompt)) {
+            // Replace existing mood
+            return prevPrompt.replace(moodRegex, `, ${moodText}`);
+          } else {
+            // Add new mood
+            return `${prevPrompt}, ${moodText}`;
+          }
+        }
+      });
+    }
+    onMoodModalClose(); 
   };
-  const handleSelectAccessories = (accessories) => { 
-    setSelectedAccessories(accessories); 
-    onAccessoryModalClose(); 
-  };
-  const handleSelectPrompt = ({ prompt: newPrompt }) => {
-      setPrompt(newPrompt);
-      // Handle potential reference image selection from prompt library if implemented
-      onPromptModalClose();
-  };
-  const handleSelectPose = (pose) => { setSelectedPose(pose); onPoseModalClose(); };
-  const handleSelectMood = (mood) => { setSelectedMood(mood); onMoodModalClose(); };
-  const handleSelectViews = (views) => { setSelectedViews(views); onViewModalClose(); };
+  const handleSelectViews = (views) => { setSelectedViews(views); onViewModalClose(); }; // Expects array
 
-  // --- Helper function for Setting cards --- 
+  // --- NEW: Handler for selecting pose for a batch item ---
+  const handleSelectPoseForBatch = async (poseInput) => { // Expects full pose object or ID
+    if (activeBatchSlotIndex !== null) {
+      let fullPoseObject = null; 
+
+      const config = getAuthConfig();
+      if (!config) {
+        toast({ title: "Authentication Error", description: "Cannot load pose details.", status: "error" });
+        onPoseModalClose();
+        return;
+      }
+
+      if (typeof poseInput === 'string') { // If modal sends an ID
+        console.log(`PoseSelectionModal returned an ID: ${poseInput}. Fetching full pose details from API.`);
+        try {
+          const response = await axios.get(`${API_BASE_URL}/api/poses?workspaceId=${currentWorkspaceId}`, config);
+          const poses = response.data; 
+          const foundPose = poses.find(p => p.id === poseInput);
+          
+          if (foundPose) {
+            fullPoseObject = foundPose;
+          } else {
+            console.error(`Pose with ID ${poseInput} not found in API response. workspaceId: ${currentWorkspaceId}`);
+            toast({ title: "Pose Not Found", description: `Selected pose (ID: ${poseInput}) could not be loaded from the server.`, status: "error", duration: 7000 });
+            // Even if not found, create a placeholder to store the ID at least
+            fullPoseObject = { id: poseInput, name: `Pose (ID: ${poseInput.substring(0, 8)}...)`, storage_url: null }; 
+          }
+        } catch (error) {
+          console.error("Error fetching poses from API:", error);
+          const errorMsg = error.response?.data?.message || "Could not load pose details from the server.";
+          toast({ title: "API Error", description: errorMsg, status: "error" });
+          // Create a placeholder if API call fails, using the original ID
+          fullPoseObject = { id: poseInput, name: `Pose (ID: ${poseInput.substring(0, 8)}...)`, storage_url: null }; 
+        }
+      } else if (poseInput && typeof poseInput === 'object' && poseInput.id) { // If modal sends a valid-like object
+        console.log("PoseSelectionModal returned a full pose object directly.");
+        fullPoseObject = poseInput;
+      } else if (poseInput) {
+        console.error("Invalid or incomplete pose data received from selection modal:", poseInput);
+        toast({ title: "Invalid Pose Data", description: "Received unexpected pose data from the selection modal.", status: "error" });
+      } 
+
+      setGenerationBatch(prevBatch => {
+        const newBatch = [...prevBatch];
+        // Ensure we only update if activeBatchSlotIndex is valid for the newBatch array length
+        if (activeBatchSlotIndex < newBatch.length) {
+            newBatch[activeBatchSlotIndex] = { ...newBatch[activeBatchSlotIndex], selectedPose: fullPoseObject };
+        }
+        return newBatch;
+      });
+    }
+    onPoseModalClose();
+    // setActiveBatchSlotIndex(null); // Reset active index - this is now handled by PoseSelectionModal's onClose prop
+  };
+
   const findOption = (options, value) => options.find(opt => opt.value === value);
   
   // --- Open AddToCollectionModal --- 
@@ -714,7 +957,8 @@ function CreateStylePage() {
       onAddToCollectionOpen();
   };
 
-  const removeSelectedGarment = () => setSelectedGarment(null);
+  const removeSelectedTopGarment = () => setSelectedTopGarment(null);
+  const removeSelectedBottomGarment = () => setSelectedBottomGarment(null);
   const removeSelectedModel = () => setSelectedModel(null);
   const removeSelectedAccessory = (accessoryId) => {
     setSelectedAccessories(prev => prev.filter(acc => acc.id !== accessoryId));
@@ -727,6 +971,201 @@ function CreateStylePage() {
     return () => setHeader('', ''); // Clear on unmount
   }, [setHeader]);
 
+  // --- Polling useEffect --- 
+  useEffect(() => {
+    let intervalId = null;
+    if (jobId && generationState === 'generating') {
+        console.log("Starting polling interval for job:", jobId);
+        // Setup interval using the useCallback version of pollStatus
+        intervalId = setInterval(() => {
+            pollStatus(jobId, intervalId); // Pass intervalId for clearing inside pollStatus
+        }, POLLING_INTERVAL);
+        setPollingIntervalId(intervalId); // Store interval ID
+    } else {
+        console.log("Clearing polling interval.");
+        if (pollingIntervalId) clearInterval(pollingIntervalId);
+        setPollingIntervalId(null);
+    }
+
+    // Cleanup function
+    return () => {
+        if (pollingIntervalId) {
+            console.log("Clearing interval on unmount/dependency change.");
+            clearInterval(pollingIntervalId);
+            setPollingIntervalId(null);
+        }
+    };
+  // Re-run when jobId or generationState changes
+  // pollStatus is now stable due to useCallback
+  }, [jobId, generationState, pollStatus]); 
+
+  // --- NEW: Poll Batch Item Status Function ---
+  const pollBatchItemStatus = useCallback(async (batchItemId, jobIdToPoll) => {
+    const config = getAuthConfig();
+    if (!jobIdToPoll || !config) {
+      setGenerationBatch(prevBatch =>
+        prevBatch.map(item =>
+          item.id === batchItemId
+            ? { ...item, status: 'failed', error: 'Polling setup error: Missing Job ID or Auth.' }
+            : item
+        )
+      );
+      return;
+    }
+
+    // Check for timeout and fire toast *before* the main async logic, based on current item state derived inside setGenerationBatch
+    // This is a bit tricky because toast shouldn't be in the updater. We need to read, decide, toast, then update.
+    // Let's read the attempts first, then decide on toast and subsequent update.
+
+    let shouldToastTimeout = false;
+    let itemToToastIndex = -1;
+
+    setGenerationBatch(prevBatch => {
+        const itemIndex = prevBatch.findIndex(item => item.id === batchItemId);
+        if (itemIndex !== -1) {
+            const currentItem = prevBatch[itemIndex];
+            if (currentItem.status === 'generating' && currentItem.pollingAttempts >= MAX_POLLING_ATTEMPTS -1) { // Check if *next* attempt will be timeout
+                shouldToastTimeout = true;
+                itemToToastIndex = itemIndex; // Assuming itemIndex is stable enough for a quick toast title
+            }
+        }
+        return prevBatch; // No state change here, just reading for toast decision
+    });
+
+    if (shouldToastTimeout && itemToToastIndex !== -1) {
+        toast({
+            title: `Look ${itemToToastIndex + 1} - Still Working...`,
+            description: "Generation is taking longer than expected. You can view status in the Generations page later.",
+            status: "warning",
+            duration: 6000,
+            isClosable: true
+        });
+    }
+
+    try {
+      const pollResponse = await axios.get(`${API_BASE_URL}/api/generate/${jobIdToPoll}`, config);
+      const status = pollResponse.data?.status;
+      const assetId = pollResponse.data?.assetId;
+      const errorMsg = pollResponse.data?.error;
+
+      if (status === 'completed' && assetId) {
+        try {
+          const assetResponse = await axios.get(`${API_BASE_URL}/api/assets/${assetId}`, config);
+          setGenerationBatch(prevBatch =>
+            prevBatch.map(item =>
+              item.id === batchItemId
+                ? { ...item, status: 'results', result: assetResponse.data, error: null, pollingAttempts: 0 }
+                : item
+            )
+          );
+        } catch (fetchErr) {
+          console.error(`Failed to fetch final asset for batch item ${batchItemId}:`, fetchErr);
+          setGenerationBatch(prevBatch =>
+            prevBatch.map(item =>
+              item.id === batchItemId
+                ? { ...item, status: 'failed', error: 'Generation complete, but failed to fetch result.' }
+                : item
+            )
+          );
+        }
+      } else if (status === 'failed') {
+        setGenerationBatch(prevBatch =>
+          prevBatch.map(item =>
+            item.id === batchItemId
+              ? { ...item, status: 'failed', error: errorMsg || 'Generation failed.', jobId: null }
+              : item
+          )
+        );
+      } else { // Still pending or processing, or other statuses
+        setGenerationBatch(prevBatch =>
+          prevBatch.map(item => {
+            if (item.id === batchItemId) {
+              if (item.status !== 'generating') {
+                // If item is no longer generating (e.g., timed_out_checking, failed by other means), don't update pollingAttempts
+                return item;
+              }
+              if (item.pollingAttempts >= MAX_POLLING_ATTEMPTS) {
+                return { ...item, status: 'timed_out_checking', error: item.error || 'Polling timed out from frontend.' };
+              }
+              return { ...item, pollingAttempts: (item.pollingAttempts || 0) + 1 };
+            }
+            return item;
+          })
+        );
+      }
+    } catch (pollError) {
+      console.error(`Polling error for batch item ${batchItemId} (Job ID: ${jobIdToPoll}):`, pollError);
+      setGenerationBatch(prevBatch =>
+        prevBatch.map(item => {
+          if (item.id === batchItemId) {
+            if (item.status !== 'generating') return item; // Don't revert status
+            // Increment attempts to eventually timeout even on polling errors
+             if (item.pollingAttempts >= MAX_POLLING_ATTEMPTS) {
+                return { ...item, status: 'timed_out_checking', error: item.error || 'Polling request failed and timed out.' };
+            }
+            return { ...item, pollingAttempts: (item.pollingAttempts || 0) + 1, error: item.error }; // Preserve existing error if any, or set one if desired
+          }
+          return item;
+        })
+      );
+    }
+  }, [getAuthConfig, toast, API_BASE_URL, MAX_POLLING_ATTEMPTS]); // setGenerationBatch is stable
+
+  // --- NEW: useEffect for Batch Polling Management ---
+  useEffect(() => {
+    // Manage polling intervals for batch items
+    // If leaving batch mode, clear all existing intervals
+    if (mode !== 'batch') {
+      Object.values(batchPollingIntervalsRef.current).forEach(clearInterval);
+      batchPollingIntervalsRef.current = {};
+      return;
+    }
+
+    // For each batch item, start or stop polling based on its status and jobId
+    generationBatch.forEach(item => {
+      const existingIntervalId = batchPollingIntervalsRef.current[item.id];
+      if (item.status === 'generating' && item.jobId && !existingIntervalId) {
+        console.log(`Starting polling for batch item ${item.id}, Job ID: ${item.jobId}`);
+        const intervalId = setInterval(() => {
+          pollBatchItemStatus(item.id, item.jobId);
+        }, POLLING_INTERVAL);
+        batchPollingIntervalsRef.current[item.id] = intervalId;
+      } else if ((item.status !== 'generating' || !item.jobId) && existingIntervalId) {
+        console.log(`Stopping polling for batch item ${item.id} (Status: ${item.status}, JobID: ${item.jobId})`);
+        clearInterval(existingIntervalId);
+        delete batchPollingIntervalsRef.current[item.id];
+      }
+    });
+
+    // Cleanup on unmount or when generationBatch/mode changes
+    return () => {
+      console.log('Cleaning up batch polling intervals from useEffect.');
+      Object.values(batchPollingIntervalsRef.current).forEach(clearInterval);
+      batchPollingIntervalsRef.current = {};
+    };
+  }, [generationBatch, mode, pollBatchItemStatus]);
+
+  // --- Effect to update generationBatch when numberOfLooks changes ---
+  useEffect(() => {
+    setGenerationBatch(prevBatch => {
+      const newSize = parseInt(numberOfLooks, 10);
+      const currentSize = prevBatch.length;
+      if (newSize === currentSize) return prevBatch;
+
+      const newBatch = Array(newSize).fill(null).map((_, i) => {
+        if (i < currentSize) return prevBatch[i]; // Keep existing items
+        return initialBatchItem(); // Add new initial items
+      });
+      return newBatch;
+    });
+    // Reset active slot to 0 if it's out of bounds of the new size
+    setActiveBatchSlotIndex(prevIndex => {
+      const newSize = parseInt(numberOfLooks, 10);
+      if (prevIndex >= newSize) return 0;
+      return prevIndex;
+    });
+  }, [numberOfLooks]);
+
   // --- Render ---
   return (
     // Use Flex for side-by-side layout on larger screens
@@ -736,11 +1175,9 @@ function CreateStylePage() {
       <VStack 
         spacing={5} // Consistent spacing
         align="stretch" 
-        width={{ base: '100%', lg: '450px' }} // Fixed width for controls panel
-        flexShrink={0}
+        flex={{ base: 'none', lg: 6 }} // Assign flex ratio for lg screens
       >
-        <Heading size="lg">Visualize New Look</Heading>
-
+ 
         {/* Mode Selection */}
         <FormControl>
           <FormLabel>Generation Mode</FormLabel>
@@ -756,68 +1193,234 @@ function CreateStylePage() {
           </HStack>
         </FormControl>
 
-        {/* Input Section (Conditional Garment/Image + Optional Model/Accessories) */}
-        <Flex direction={{ base: 'column', md: 'row' }} gap={4} align="stretch"> 
-          {/* Garment Input (Conditional) - Ensure it takes appropriate width */}
-          {mode === 'garment' && (
-            <Box flex={{ md: 1 }}> 
-              {/* Standardized Header */}
-              <HStack justifyContent="space-between" mb={1} align="center">
+        {/* Input Section: Changed outer Flex to VStack */}
+        <VStack spacing={4} align="stretch"> 
+          {/* Garment Inputs (Conditional) */}
+          {(mode === 'garment' || mode === 'batch') && (
+            <Flex direction={{ base: 'column', md: 'row' }} gap={4}> {/* Inner Flex for garments remains row */}
+              {/* Top Garment */}
+              <Box flex={1} minWidth="180px">
+                <HStack justifyContent="space-between" mb={2} align="center">
                   <HStack spacing={2}>
                       <Icon as={FaTshirt} color="gray.500" /> 
-                      <Heading size="sm">Selected Garment *</Heading> 
+                    <Heading size="sm">Top Garment</Heading>
                   </HStack>
-                  {/* FormLabel removed as it's replaced by the HStack/Heading */}
-              </HStack>
-              {/* FormLabel removed from here */}
-              {/* <FormLabel>Selected Garment *</FormLabel> */} 
-
-              {selectedGarment ? (
-                 // Style for selected garment preview
-                 <HStack 
+                </HStack>
+                
+                {selectedTopGarment ? (
+                  <HStack 
                     p={2} 
                     spacing={3} 
                     bg={settingCardHoverBg} 
-                    borderRadius="md"
+                    borderRadius="md" 
                     borderWidth="1px" 
                     borderColor={placeholderBorder} 
-                >
-                  <Image src={selectedGarment.reference_image_url || 'https://via.placeholder.com/50'} boxSize="40px" borderRadius="sm" objectFit="cover"/>
-                  <Text flex={1} fontWeight="medium">{selectedGarment.name}</Text>
-                  <Button size="xs" variant="outline" onClick={onGarmentModalOpen}>Change</Button> 
-                </HStack>
-              ) : (
-                // Style for placeholder button
-              <HStack
-                borderWidth="1px"
-                borderRadius="md"
-                p={3}
-                spacing={4}
-                alignItems="center"
-                  borderColor={placeholderBorder}
-                bg={placeholderBg}
-                  minHeight="66px" 
-                  cursor="pointer" 
-                  _hover={{ bg: hoverBg }} 
-                  onClick={onGarmentModalOpen} 
-                >
-                   <Icon as={FaTshirt} mr={2} /> 
-                   <Text color={placeholderColor}>Select Base Garment...</Text> 
-              </HStack>
-              )}
-            </Box>
-          )}
-
-           {/* Image Input (Conditional) - Ensure it takes appropriate width */}
-           {mode === 'image' && (
-             <Box flex={{ md: 1 }}> 
-                {/* Standardized Header */}
-                <HStack justifyContent="space-between" mb={1} align="center">
+                    minHeight="66px"
+                    alignItems="center" // Center items vertically in the HStack
+                  >
+                    <Image 
+                      src={selectedTopGarment.reference_image_url || 'https://via.placeholder.com/50'} 
+                      boxSize="40px" // Keep image size reasonable
+                      borderRadius="sm" 
+                      objectFit="cover"
+                    />
+                    <VStack align="start" spacing={1} flex={1}> {/* Text and Button stack */} 
+                      <Text fontSize="sm" fontWeight="medium" noOfLines={2}> {/* Allow wrapping */} 
+                        {selectedTopGarment.name}
+                      </Text>
+                      <Button 
+                        size="xs" 
+                        variant="outline" 
+                        onClick={() => { setActiveGarmentSlot('top'); onGarmentModalOpen(); }} 
+                        alignSelf="flex-start" // Align button left within VStack
+                      >
+                        Change
+                      </Button>
+                    </VStack>
+                  </HStack>
+                ) : (
+                  // Refined Placeholder
+                  <HStack 
+                    borderWidth="1px" 
+                    borderRadius="md" 
+                    p={3} // Keep padding for click area
+                    spacing={3} // Adjust spacing
+                    alignItems="center" 
+                    borderColor={placeholderBorder} 
+                    bg={placeholderBg} 
+                    minHeight="66px" 
+                    cursor="pointer" 
+                    _hover={{ bg: hoverBg }} 
+                    onClick={() => { setActiveGarmentSlot('top'); onGarmentModalOpen(); }}
+                    justifyContent="center" // Center content horizontally
+                  >
+                     <Icon as={FaTshirt} color={placeholderColor} boxSize={5}/> 
+                     <Text color={placeholderColor} fontSize="sm">Select Top Garment...</Text>
+                  </HStack>
+                )}
+              </Box>
+              {/* Bottom Garment */}
+              <Box flex={1} minWidth="180px">
+                <HStack justifyContent="space-between" mb={2} align="center">
                   <HStack spacing={2}>
-                    <Icon as={FaImage} color="gray.500" /> 
-                    <Heading size="sm">Reference Image *</Heading> 
+                    <Icon as={FaShoppingBag} color="gray.500" />
+                    <Heading size="sm">Bottom Garment</Heading>
                   </HStack>
                 </HStack>
+                {selectedBottomGarment ? (
+                  <HStack 
+                    p={2} 
+                    spacing={3} 
+                    bg={settingCardHoverBg} 
+                    borderRadius="md" 
+                    borderWidth="1px" 
+                    borderColor={placeholderBorder} 
+                    minHeight="66px"
+                    alignItems="center" // Center items vertically in the HStack
+                  >
+                    <Image 
+                      src={selectedBottomGarment.reference_image_url || 'https://via.placeholder.com/50'} 
+                      boxSize="40px" 
+                      borderRadius="sm" 
+                      objectFit="cover"
+                    />
+                    <VStack align="start" spacing={1} flex={1}> {/* Text and Button stack */} 
+                      <Text fontSize="sm" fontWeight="medium" noOfLines={2}> {/* Allow wrapping */} 
+                        {selectedBottomGarment.name}
+                      </Text>
+                      <Button 
+                        size="xs" 
+                        variant="outline" 
+                        onClick={() => { setActiveGarmentSlot('bottom'); onGarmentModalOpen(); }} 
+                        alignSelf="flex-start" // Align button left within VStack
+                      >
+                        Change
+                      </Button>
+                    </VStack>
+                  </HStack>
+                ) : (
+                   // Refined Placeholder
+                  <HStack 
+                    borderWidth="1px" 
+                    borderRadius="md" 
+                    p={3} // Keep padding
+                    spacing={3} // Adjust spacing
+                    alignItems="center" 
+                    borderColor={placeholderBorder} 
+                    bg={placeholderBg} 
+                    minHeight="66px" 
+                    cursor="pointer" 
+                    _hover={{ bg: hoverBg }} 
+                    onClick={() => { setActiveGarmentSlot('bottom'); onGarmentModalOpen(); }}
+                    justifyContent="center" // Center content horizontally
+                  >
+                    <Icon as={FaShoppingBag} color={placeholderColor} boxSize={5}/> {/* Use Bag Icon */} 
+                    <Text color={placeholderColor} fontSize="sm">Select Bottom Garment...</Text>
+                  </HStack>
+                )}
+              </Box>
+            </Flex>
+          )}
+           {/* END Garment Inputs */}
+
+          {/* Unified Container for Model & Accessories - MOVED HERE */}
+          <Box borderWidth="1px" borderRadius="lg" p={4} borderColor={placeholderBorder}> 
+            <Flex direction={{ base: 'column', md: 'row' }} gap={6}> {/* Two columns */} 
+            
+              {/* Left Column: Model */}
+              <VStack flex={1} align="start" spacing={3}>
+                <HStack> {/* Label + Icon */} 
+                  <Icon as={FaUserCircle} color="gray.500" /> 
+                  <Heading size="sm">Model</Heading>
+                </HStack>
+                
+                {selectedModel ? (
+                  <VStack align="start" spacing={2} w="100%">
+                     <Image 
+                        src={selectedModel.storage_url} 
+                        alt={selectedModel.name || 'Model Preview'} 
+                        boxSize="40px" // Revert size
+                        objectFit="cover" 
+                        borderRadius="sm" // Revert border radius
+                      />
+                      <Text fontSize="md" fontWeight="medium" noOfLines={2}>{selectedModel.name || 'Untitled Model'}</Text>
+                      <Button 
+                        size="sm" // Slightly larger button
+                        variant="outline" 
+                        onClick={onModelModalOpen} 
+                        alignSelf="flex-start"
+                      >
+                          Change
+                      </Button>
+                    </VStack>
+                 ) : (
+                    <Box 
+                        p={6} 
+                        border={"1px dashed"} 
+                        borderColor={placeholderBorder} 
+                        borderRadius="md"
+                        textAlign="center" 
+                        bg={placeholderBg}
+                        cursor={"pointer"} 
+                        _hover={{ bg: hoverBg }} 
+                        onClick={onModelModalOpen}
+                        w="100%" // Take full width of column
+                        minHeight="100px" // Example min height
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
+                    >
+                        <Text color={placeholderColor} fontSize="sm">Select Model</Text>
+                    </Box>
+                 )}
+              </VStack>
+
+              {/* Right Column: Accessories */}
+              <VStack flex={1} align="start" spacing={3}>
+                <HStack align="center" mb={0}> {/* Ensure vertical alignment */} 
+                  <Icon as={FaBoxOpen} color="gray.500" /> {/* Example Icon */} 
+                  <Text fontWeight="bold">Accessories</Text> {/* Bold Text */} 
+                </HStack>
+                
+                <Wrap spacing={2} minHeight="60px"> {/* Wrap for tags, min height */} 
+                  {selectedAccessories.length > 0 ? (
+                      selectedAccessories.map(acc => (
+                          <Tag key={acc.id} size="md" variant="solid" colorScheme="purple" borderRadius="full">
+                              {/* TODO: Add accessory icons if available */} 
+                              {/* <Icon as={FaShoppingBag} mr={1} /> */} 
+                              <TagLabel>{acc.name}</TagLabel>
+                              <TagCloseButton onClick={() => removeSelectedAccessory(acc.id)} />
+                          </Tag>
+                      ))
+                  ) : (
+                     <Text fontSize="xs" color={placeholderColor} fontStyle="italic">No accessories selected.</Text>
+                  )}
+                </Wrap>
+                <Button 
+                  leftIcon={<FaPlus />} 
+                  variant="outline" 
+                  borderStyle="dashed"
+                  size="sm"
+                  onClick={onAccessoryModalOpen}
+                  w="100%" // Button takes full width
+                >
+                  Add Accessory
+                </Button>
+              </VStack>
+            
+            </Flex> {/* End Two columns */} 
+          </Box> {/* End Unified Container FOR MODEL & ACCESSORIES */} 
+          
+           {/* Image Input (Conditional) - REMAINS AFTER MODEL/ACC */}
+           {mode === 'image' && ( // This is the original image upload mode
+             <Box> {/* Removed flex properties */} 
+               {/* Standardized Header */}
+               <HStack justifyContent="space-between" mb={1} align="center">
+                 <HStack spacing={2}>
+                   <Icon as={FaImage} color="gray.500" /> 
+                   <Heading size="sm">Reference Image *</Heading> 
+                 </HStack>
+               </HStack>
                {/* FormLabel removed */}
                {/* <FormLabel>Reference Image *</FormLabel> */} 
 
@@ -859,108 +1462,193 @@ function CreateStylePage() {
              </Box>
            )}
 
-          {/* Model Selection Display - Ensure it takes appropriate width */}
-          <Box flex={{ md: 1 }}> {/* Removed bg, p, shadow from outer box */}
-              <HStack justifyContent="space-between" mb={1}> {/* Reduced margin bottom */}
-                  <HStack spacing={2}>
-                      <Icon as={FaUserCircle} color="gray.500" /> 
-                      <Heading size="sm">Model</Heading>
-                  </HStack>
+          {/* --- NEW: Batch Generation Input Section --- */}
+          {mode === 'batch' && (
+            <VStack spacing={4} align="stretch" borderWidth="1px" borderRadius="lg" p={4}>
+              {/* Modified Heading and Number of Looks Selector */}
+              <HStack justifyContent="space-between" alignItems="center" mb={4}> 
+                <Heading size="md">Define Your Looks</Heading>
+                {/* Plus-Minus Counter for Number of Looks */}
+                <HStack spacing={2} alignItems="center">
+                  <IconButton 
+                    icon={<FaMinus />} 
+                    size="xs" 
+                    aria-label="Decrease number of looks"
+                    onClick={() => setNumberOfLooks(prev => Math.max(2, prev - 1))} // Min 2 looks
+                    isDisabled={numberOfLooks <= 2}
+                  />
+                  <Text fontSize="sm" fontWeight="medium" minW="50px" textAlign="center">
+                    {numberOfLooks} Look{numberOfLooks > 1 ? 's' : ''}
+                  </Text>
+                  <IconButton 
+                    icon={<FaPlus />} 
+                    size="xs" 
+                    aria-label="Increase number of looks"
+                    onClick={() => setNumberOfLooks(prev => Math.min(5, prev + 1))} // Max 5 looks
+                    isDisabled={numberOfLooks >= 5}
+                  />
+                </HStack>
               </HStack>
-              
-              {/* Conditionally render preview or placeholder */}
-              {selectedModel ? (
-                   // Style for selected model preview
-              <HStack
-                      p={2} 
-                      spacing={3}
-                      bg={settingCardHoverBg} 
-                      borderRadius="md"
-                borderWidth="1px"
-                      borderColor={placeholderBorder}
-                    > 
-                      <Image 
-                        src={selectedModel.storage_url} 
-                        alt={selectedModel.name || 'Model Preview'} 
-                        boxSize="40px" 
-                        objectFit="cover" 
-                        borderRadius="sm" 
-                      />
-                      <Text fontSize="sm" fontWeight="medium" noOfLines={1} flex={1}>{selectedModel.name || 'Untitled Model'}</Text>
-                      <Button size="xs" variant="outline" onClick={onModelModalOpen} ml="auto">
-                          Change
-                      </Button>
-                    </HStack>
-              ) : (
-                   // Style for placeholder - clickable box
-                   <Box 
-                      p={6} 
-                      border={"1px dashed"} 
-                      borderColor={placeholderBorder} 
-                borderRadius="md"
-                      textAlign="center" 
-                bg={placeholderBg}
-                      cursor={"pointer"} 
-                      _hover={{ bg: hoverBg }} 
-                onClick={onModelModalOpen}
+
+              {/* Carousel-like navigation for batch items */}
+              <HStack spacing={2} overflowX="auto" py={2} mb={3} borderBottomWidth="1px" borderColor="gray.200">
+                {generationBatch.map((batchItem, index) => {
+                  const isPromptFilled = batchItem.prompt && batchItem.prompt.trim() !== '';
+                  const isPoseSelected = !!batchItem.selectedPose;
+                  return (
+                    <Button
+                      key={`tab-${index}`}
+                      variant={'outline'}
+                      colorScheme={activeBatchSlotIndex === index ? 'purple' : 'gray'}
+                      onClick={() => setActiveBatchSlotIndex(index)}
+                      size="md" // Slightly larger to accommodate internal VStack
+                      flexShrink={0} // Prevent buttons from shrinking too much
+                      height="auto" // Allow button height to adjust to content
+                      p={2} // Adjust padding as needed
                     >
-                        <Text color={placeholderColor}>Click to select a model (Optional)</Text>
-                    </Box>
-              )}
-           </Box>
-        </Flex> {/* End Flex */} 
-
-       {/* Accessory Selection (Optional) - Remains below */}
-            <Box>
-              <FormLabel>Accessories (Optional)</FormLabel>
-              <HStack
-                  borderWidth="1px"
-                  borderRadius="md"
-                  p={3}
-                  spacing={2}
-                  alignItems="center"
-                  borderColor={selectedAccessories.length > 0 ? 'transparent' : placeholderBorder}
-                  bg={placeholderBg}
-                  minHeight="66px" // Match other input boxes
-                  flexWrap="wrap" // Allow tags to wrap
-                  cursor="pointer"
-                  onClick={onAccessoryModalOpen}
-                  _hover={{ bg: useColorModeValue('gray.200', 'gray.600')}}
-              >
-                  {selectedAccessories.length > 0 ? (
-                      selectedAccessories.map(acc => (
-                          <Tag key={acc.id} size="md" variant="solid" colorScheme="purple" m={1}>
-                              {acc.name}
-                          </Tag>
-                      ))
-                  ) : (
-                      <Text color={placeholderColor} width="100%" textAlign="center">
-                          Select Accessories... (Optional)
-                      </Text>
-                  )}
+                      <VStack spacing={1} alignItems="center">
+                        <HStack spacing={2}>
+                          <Icon
+                            as={FaPen}
+                            color={isPromptFilled ? 'green.500' : 'red.500'}
+                            boxSize={4}
+                          />
+                          <Icon
+                            as={isPoseSelected ? FaUserCheck : FaUserSlash}
+                            color={isPoseSelected ? 'green.500' : 'red.500'}
+                            boxSize={4}
+                          />
+                        </HStack>
+                        <Text fontSize="sm">Look {index + 1}</Text>
+                      </VStack>
+                    </Button>
+                  );
+                })}
               </HStack>
-            </Box>
 
-        {/* Prompt Input */}
-        <FormControl isRequired>
-          <HStack justify="space-between" mb={1}> {/* Label and Library Button */}
-            <FormLabel mb={0}>Style Prompt</FormLabel>
-            <Button 
-              size="xs" 
-              variant="outline"
-              onClick={onPromptModalOpen} // Open prompt library modal
-            >
-              Prompt Library
-            </Button>
-          </HStack>
-          <Textarea
-            placeholder="Describe the desired style, clothing details, model appearance, setting, lighting..."
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            rows={5} // Adjust rows as needed
-          />
-          <FormHelperText>Example: "Full body shot of model wearing the [garment name] in a futuristic city, neon lighting, cyberpunk aesthetic."</FormHelperText>
-        </FormControl>
+              {/* Details for the active batch item */}
+              {activeBatchSlotIndex !== null && generationBatch[activeBatchSlotIndex] && (
+                <Box p={3} borderWidth="1px" borderRadius="md" shadow="sm" bg={activeBatchItemBackground}>
+                  <VStack spacing={3} align="stretch">
+                    <HStack justifyContent="space-between">
+                      <FormLabel htmlFor={`batch-prompt-${activeBatchSlotIndex}`} mb={0} fontWeight="bold">
+                        Prompt for Look {activeBatchSlotIndex + 1}
+                      </FormLabel>
+                    </HStack>
+                    <Textarea
+                      id={`batch-prompt-${activeBatchSlotIndex}`}
+                      placeholder={`Describe the style for Look ${activeBatchSlotIndex + 1}...`}
+                      value={generationBatch[activeBatchSlotIndex].prompt}
+                      onChange={(e) => {
+                        const newPrompt = e.target.value;
+                        setGenerationBatch(prevBatch => {
+                          const newBatch = [...prevBatch];
+                          newBatch[activeBatchSlotIndex] = { ...newBatch[activeBatchSlotIndex], prompt: newPrompt };
+                          return newBatch;
+                        });
+                      }}
+                      rows={4} // Increased rows for better editing
+                    />
+                    {/* Enhanced Pose Selection Display */}
+                    <FormControl mt={2}>
+                      <FormLabel fontSize="sm" fontWeight="medium">Pose</FormLabel>
+                      {generationBatch[activeBatchSlotIndex].selectedPose ? (
+                        <HStack 
+                          p={2} 
+                          spacing={3} 
+                          bg={selectedPoseBg} // Use variable
+                          borderRadius="md" 
+                          borderWidth="1px" 
+                          borderColor={selectedPoseBorderColor} // Use variable
+                          alignItems="center"
+                        >
+                          {/* Display Pose Image if available */}
+                          {generationBatch[activeBatchSlotIndex].selectedPose.storage_url && (
+                            <Image 
+                              src={generationBatch[activeBatchSlotIndex].selectedPose.storage_url} 
+                              alt={generationBatch[activeBatchSlotIndex].selectedPose.name || 'Pose preview'}
+                              boxSize="40px" 
+                              objectFit="cover" 
+                              borderRadius="sm" 
+                              bg="gray.200" // BG for placeholder/broken images
+                            />
+                          )}
+                          {!generationBatch[activeBatchSlotIndex].selectedPose.storage_url && (
+                             <Icon as={FaUserCheck} color={selectedPoseIconColor} boxSize={5}/>
+                          )}
+                          <VStack align="start" spacing={0} flex={1}>
+                            <Text fontSize="sm" fontWeight="medium">
+                              {generationBatch[activeBatchSlotIndex].selectedPose.name || 'Pose Selected'}
+                            </Text>
+                            <Text fontSize="xs" color="gray.500">
+                              ID: {generationBatch[activeBatchSlotIndex].selectedPose.id} 
+                            </Text>
+                          </VStack>
+                          <Button 
+                            size="xs" 
+                            variant="outline" 
+                            onClick={onPoseModalOpen} 
+                          >
+                            Change
+                          </Button>
+                        </HStack>
+                      ) : (
+                        <HStack 
+                          borderWidth="1px" 
+                          borderRadius="md" 
+                          p={3} 
+                          spacing={3} 
+                          alignItems="center" 
+                          borderColor={placeholderBorder} 
+                          bg={placeholderBg} 
+                          minHeight="60px" // Consistent height
+                          cursor="pointer" 
+                          _hover={{ bg: hoverBg }} 
+                          onClick={onPoseModalOpen}
+                          justifyContent="center"
+                        >
+                          <Icon as={FaUserCircle} color={placeholderColor} boxSize={5}/> 
+                          <Text color={placeholderColor} fontSize="sm">Select Pose...</Text>
+                        </HStack>
+                      )}
+                    </FormControl>
+                  </VStack>
+                </Box>
+              )}
+            </VStack>
+          )}
+          {/* End Batch Generation Input Section */}
+          
+          {/* Unified Container for Model & Accessories - This block is now MOVED from here. 
+              The content of this comment represents where it USED to be. 
+              It was originally after the Batch Generation Input Section. 
+          */}
+          
+        </VStack> 
+        {/* End Main Input VStack */}
+
+        {/* Prompt Input - Conditionally render if not in batch mode */}
+        {mode !== 'batch' && (
+          <FormControl isRequired>
+            <HStack justify="space-between" mb={1}> {/* Label and Library Button */}
+              <FormLabel mb={0}>Style Prompt</FormLabel>
+              <Button 
+                size="xs" 
+                variant="outline"
+                onClick={onPromptModalOpen} // Open prompt library modal
+              >
+                Prompt Library
+              </Button>
+            </HStack>
+            <Textarea
+              placeholder="Describe the desired style, clothing details, model appearance, setting, lighting..."
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={5} // Adjust rows as needed
+            />
+            <FormHelperText>Example: "Full body shot of model wearing the [garment name] in a futuristic city, neon lighting, cyberpunk aesthetic."</FormHelperText>
+          </FormControl>
+        )}
         
         {/* --- Advanced Settings Section (Aspect Ratio, Quality) --- */}
         <VStack spacing={3} align="stretch" borderWidth="1px" borderRadius="lg" p={4}>
@@ -1034,18 +1722,20 @@ function CreateStylePage() {
         </VStack>
 
         {/* --- Optional Refinements Section (Pose, Mood, View) --- */}
+        {/* Conditionally render if not in batch mode, as these are per-item in batch */}
+        {mode !== 'batch' && (
          <VStack spacing={3} align="stretch" borderWidth="1px" borderRadius="lg" p={4}>
-             <Heading size="sm" mb={1}>Refinements (Optional)</Heading>
+             <Heading size="sm" mb={1}>Refinements</Heading>
              <HStack spacing={3} width="100%">
                  {/* Pose Selection Display Card */}
                  <SettingDisplayCard
                     label="Pose"
-                    icon={FaTshirt} // Replace with appropriate icon
-                    value={selectedPose ? selectedPose.name : 'Default'}
+                    icon={FaUserCircle} // Placeholder icon
+                    value={selectedPoseId ? 'Selected' : 'Default'} // Updated display logic
                     onClick={onPoseModalOpen}
-                    isActive={expandedSetting === 'pose'}
-                    bg={settingCardBg}
-                    hoverBg={settingCardHoverBg}
+                    bg={placeholderBg}
+                    hoverBg={hoverBg}
+                    isActive={!!selectedPoseId}
                  />
                  {/* Mood Selection Display Card */}
                  <SettingDisplayCard
@@ -1057,25 +1747,15 @@ function CreateStylePage() {
                      bg={settingCardBg}
                      hoverBg={settingCardHoverBg}
                  />
-                  {/* View Selection Display Card */}
-                 <SettingDisplayCard
-                     label="Views"
-                     icon={FaImage} // Replace with appropriate icon
-                     // Display number of selected views, or "Default" if only the default one is implicitly selected
-                     value={`${selectedViews.length} Selected`}
-                     onClick={onViewModalOpen}
-                     isActive={expandedSetting === 'views'}
-                     bg={settingCardBg}
-                     hoverBg={settingCardHoverBg}
-                 />
              </HStack>
          </VStack>
+        )}
 
       </VStack>
 
       {/* Right Panel: Visualization Area */}
       <VStack 
-        flex={1} 
+        flex={{ base: 'none', lg: 7 }} // Assign flex ratio for lg screens
         align="center" // Center content horizontally
         spacing={4} 
         pt={{ base: 4, lg: 12 }} // Add padding top for alignment
@@ -1086,7 +1766,6 @@ function CreateStylePage() {
           {/* Image Preview Area */}
           <Box 
             width="100%" 
-            maxW={{ base: '100%', md: '600px', lg: '100%' }} // Allow full width on lg
             mx="auto"
           >
             <AspectRatio 
@@ -1129,6 +1808,21 @@ function CreateStylePage() {
                            Generation finished, but no results were returned.
                        </Text>
                    )}
+                   {/* Handle timeout checking state */} 
+                   {generationState === 'timed_out_checking' && (
+                       <VStack spacing={3}>
+                           <Icon as={FaHourglassHalf} boxSize={10} color="orange.400" />
+                           <Text fontWeight="medium" color="orange.500" textAlign="center">
+                               Still working... Generation is taking longer than usual.
+                           </Text>
+                           <Text fontSize="sm" color="gray.500" textAlign="center">
+                               You can view your previous generations in the Generations page.
+                           </Text>
+                           <Button size="sm" colorScheme="purple" variant="outline" onClick={() => navigate('/app/generations')}>
+                               View Generations
+                           </Button>
+                       </VStack>
+                   )}
               </Center>
             </AspectRatio>
           </Box>
@@ -1140,7 +1834,6 @@ function CreateStylePage() {
                 justifyContent="center" 
                 flexWrap="wrap" 
                 width="100%" 
-                maxW={{ base: '100%', md: '600px', lg: '100%' }} // Allow full width
                 mx="auto"
               >
                   {results.map((result, index) => (
@@ -1178,19 +1871,24 @@ function CreateStylePage() {
                   loadingText="Visualizing..."
                   size="lg"
                   // Disable if generating or required fields missing
-                  isDisabled={generationState === 'generating' || !prompt.trim() || (mode === 'garment' && !selectedGarment) || (mode === 'image' && !uploadedImage) }
+                  isDisabled={
+                    generationState === 'generating' ||
+                    (mode !== 'batch' && !prompt.trim()) ||
+                    (mode === 'garment' && !(selectedTopGarment || selectedBottomGarment)) ||
+                    (mode === 'image' && !uploadedImage)
+                  }
                   w="full"
               >
                   Visualize Look
               </Button>
               
               {/* Show "Visualize Another" only after first generation */}
-              {(generationState === 'generating' || generationState === 'results') && (
+              {(generationState === 'generating' || generationState === 'results' || generationState === 'timed_out_checking') && (
                   <Button 
                       leftIcon={<FaUndo />} 
                       onClick={handleStartOver}
                       variant="outline"
-                      isDisabled={generationState === 'generating'} // Disable while generating
+                      isDisabled={generationState === 'generating'} // Only truly disable while actively generating
                       w="full"
                   >
                       Visualize Another
@@ -1235,23 +1933,14 @@ function CreateStylePage() {
       <PoseSelectionModal
           isOpen={isPoseModalOpen}
           onClose={onPoseModalClose}
-          onSelectPose={handleSelectPose} 
-          // currentPose={selectedPose} // Prop might not be used by modal, check modal impl.
+          onSelectPose={activeBatchSlotIndex !== null ? handleSelectPoseForBatch : handleSelectPose}
       />
        <MoodSelectionModal
           isOpen={isMoodModalOpen}
           onClose={onMoodModalClose}
           onSelectMood={handleSelectMood}
-          // currentMood={selectedMood} // Prop might not be used by modal, check modal impl.
       />
-      {/* This modal needs refactoring for multi-select */}
-      <ViewSelectionModal
-          isOpen={isViewModalOpen}
-          onClose={onViewModalClose}
-          onSelectViews={handleSelectViews} // Expects array of view objects
-          initialSelectedIds={selectedViews.map(v => v.id)} // Pass array of IDs
-      />
-       {/* Add To Collection Modal (for results) */} 
+      {/* Add To Collection Modal (for results) */}
         {selectedAssetForCollection && (
             <AddToCollectionModal
                 isOpen={isAddToCollectionOpen}

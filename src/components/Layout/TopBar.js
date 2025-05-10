@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Flex,
   Box,
@@ -27,8 +27,25 @@ import { FaFlask } from 'react-icons/fa';
 // Accept title and subtitle props
 function TopBar({ logout, title, subtitle }) { 
   const navigate = useNavigate(); // Hook for navigation
-  // TODO: Replace with actual data/handlers
-  const user = { name: 'User Name', avatarUrl: '' }; // Placeholder
+  
+  // --- User Info State ---
+  const [userInfo, setUserInfo] = useState(null);
+
+  useEffect(() => {
+    const storedUserInfo = localStorage.getItem('userInfo');
+    if (storedUserInfo) {
+      try {
+        setUserInfo(JSON.parse(storedUserInfo));
+      } catch (error) {
+        console.error("Error parsing userInfo from localStorage:", error);
+        // Optionally clear invalid data
+        // localStorage.removeItem('userInfo'); 
+      }
+    }
+  }, []); // Empty dependency array ensures this runs once on mount
+
+  // TODO: Replace with actual data/handlers - REMOVED Placeholder
+  // const user = { name: 'User Name', avatarUrl: '' }; // Placeholder
 
   const handleSettings = () => {
     navigate('/app/settings');
@@ -91,7 +108,20 @@ function TopBar({ logout, title, subtitle }) {
         <Menu>
           <MenuButton 
             as={IconButton}
-            icon={<Avatar size="sm" name={user.name} src={user.avatarUrl} bg="#E53E3E" color="white"/>}
+            // Use userInfo for name, fallback to 'User' if not available
+            icon={
+              <Avatar
+                size="sm"
+                name={
+                  userInfo?.name ||
+                  userInfo?.email?.substring(0, 2).toUpperCase() ||
+                  'U'
+                }
+                src={userInfo?.avatarUrl}
+                bg="#E53E3E"
+                color="white"
+              />
+            }
             variant="ghost"
             borderRadius="full"
           />

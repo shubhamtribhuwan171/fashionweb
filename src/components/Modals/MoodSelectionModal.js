@@ -68,6 +68,7 @@ function MoodSelectionModal({ isOpen, onClose, onSelectMood }) {
     if (isOpen) {
       setLoading(true);
       setSelectedMoodId(null);
+      setSearchTerm('');
       getMockMoods()
         .then(data => {
           if (isMounted) setMoods(data || []);
@@ -83,7 +84,7 @@ function MoodSelectionModal({ isOpen, onClose, onSelectMood }) {
     return () => { isMounted = false; };
   }, [isOpen]);
 
-  const { getRootProps, getRadioProps } = useRadioGroup({
+  const { getRootProps, getRadioProps: getRadioPropsForGroup } = useRadioGroup({
     name: 'mood',
     onChange: setSelectedMoodId,
   });
@@ -91,11 +92,11 @@ function MoodSelectionModal({ isOpen, onClose, onSelectMood }) {
   const group = getRootProps();
 
   const handleConfirmSelection = () => {
-    const selectedMood = moods.find(m => m.id === selectedMoodId);
+    const selectedMood = moods.find(m => m.id.toString() === selectedMoodId);
     if (selectedMood) {
       onSelectMood(selectedMood);
     }
-    onClose(); // Close modal regardless of selection after confirm click
+    onClose();
   };
 
   const filteredItems = moods.filter(item => 
@@ -131,12 +132,13 @@ function MoodSelectionModal({ isOpen, onClose, onSelectMood }) {
           {loading ? (
             <Center py={5}><Spinner /></Center>
           ) : filteredItems.length > 0 ? (
-            <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={5}>
-              {filteredItems.map((item) => (
-                <Box key={item.id} p={4} borderWidth="1px" borderRadius="md" _hover={{ shadow: 'md' }} cursor="pointer" onClick={() => handleConfirmSelection(item)} textAlign="center">
-                  {item.name}
-                </Box>
-              ))}
+            <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4} {...group}>
+              {filteredItems.map((mood) => {
+                const radio = getRadioPropsForGroup({ value: mood.id.toString(), mood: mood });
+                return (
+                  <MoodCard key={mood.id} {...radio} mood={mood} />
+                );
+              })}
             </SimpleGrid>
           ) : (
              <Center py={5}><Text>No items found{searchTerm ? ' matching "' + searchTerm + '"' : ''}.</Text></Center>

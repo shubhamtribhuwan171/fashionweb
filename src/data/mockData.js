@@ -181,6 +181,17 @@ const MOCK_ACCESSORIES = [
   { id: 'acc_005', name: 'Canvas Backpack', imageUrl: 'https://picsum.photos/seed/acc_005/200/200' },
 ];
 
+const MOCK_MOODS = [
+  { id: 'mood_001', name: 'Happy', description: 'Feeling joyful and bright' },
+  { id: 'mood_002', name: 'Sad', description: 'Feeling down or melancholic' },
+  { id: 'mood_003', name: 'Energetic', description: 'Full of energy and excitement' },
+  { id: 'mood_004', name: 'Calm', description: 'Feeling peaceful and serene' },
+  { id: 'mood_005', name: 'Mysterious', description: 'Evoking a sense of intrigue' },
+  { id: 'mood_006', name: 'Romantic', description: 'Expressing love or affection' },
+  { id: 'mood_007', name: 'Playful', description: 'Lighthearted and fun' },
+  { id: 'mood_008', name: 'Gloomy', description: 'Dark and pessimistic' },
+];
+
 // Collections data needs to be updated based on the API response format
 let MOCK_COLLECTIONS = [
   {
@@ -559,7 +570,6 @@ const MOCK_PROMPT_EXAMPLES = []; // Simplified for V1
 export const getMockPromptExamples = () => simulateDelay(MOCK_PROMPT_EXAMPLES);
 
 const MOCK_POSES = []; // Simplified for V1
-const MOCK_MOODS = []; // Simplified for V1
 const MOCK_VIEWS = []; // Simplified for V1
 export const getMockPoses = () => simulateDelay(MOCK_POSES);
 export const getMockMoods = () => simulateDelay(MOCK_MOODS);

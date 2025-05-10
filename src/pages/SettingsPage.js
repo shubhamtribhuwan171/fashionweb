@@ -109,8 +109,24 @@ export default function SettingsPage() {
 
     setIsProfileSaving(true);
     try {
-      const payload = { name: profileData.name }; // Only send fields that can be updated
+      const payload = { name: profileData.name }; 
       await axios.put(`${API_BASE_URL}/api/profile`, payload, config);
+      
+      // --- Update localStorage --- 
+      const storedUserInfo = localStorage.getItem('userInfo');
+      if (storedUserInfo) {
+          try {
+              const currentUserInfo = JSON.parse(storedUserInfo);
+              // Update only the name field
+              currentUserInfo.name = profileData.name; 
+              localStorage.setItem('userInfo', JSON.stringify(currentUserInfo));
+              console.log("Updated userInfo in localStorage with new name.");
+          } catch (parseError) {
+              console.error("Failed to parse/update userInfo in localStorage:", parseError);
+          }
+      }
+      // -------
+
       toast({ title: 'Profile updated.', status: 'success', duration: 3000, isClosable: true });
     } catch (err) {
         console.error("Error saving profile:", err);

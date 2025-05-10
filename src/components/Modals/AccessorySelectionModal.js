@@ -27,6 +27,7 @@ import {
   useToast,
   Flex,
   AspectRatio,
+  Tabs, TabList, Tab, TabPanel
 } from '@chakra-ui/react';
 import { FiSearch } from 'react-icons/fi';
 import axios from 'axios';
@@ -98,8 +99,10 @@ const AccessorySelectionModal = ({ isOpen, onClose, onSelectAccessories, initial
   const [selectedAccessoryIds, setSelectedAccessoryIds] = useState(new Set(initialSelectedIds));
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
+  const [tabIndex, setTabIndex] = useState(0);
   const toast = useToast();
   const currentWorkspaceId = getMockWorkspaceId();
+  const GLOBAL_WORKSPACE_ID = '11111111-2222-3333-4444-555555555555';
 
   const bgColor = useColorModeValue('gray.50', 'gray.800');
   const headerBg = useColorModeValue('white', 'gray.800');
@@ -125,17 +128,19 @@ const AccessorySelectionModal = ({ isOpen, onClose, onSelectAccessories, initial
       return;
     }
 
-    const params = { workspaceId: currentWorkspaceId };
+    const params = {};
     if (category) {
       params.category = category;
     }
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/accessory-images`, {
-        ...config,
-        params
-      });
-      setAccessories(response.data || []);
+      const [privateRes, publicRes] = await Promise.all([
+        axios.get(`${API_BASE_URL}/api/accessory-images`, { ...config, params: { ...params, workspaceId: currentWorkspaceId } }),
+        axios.get(`${API_BASE_URL}/api/accessory-images`, { ...config, params: { ...params, workspaceId: GLOBAL_WORKSPACE_ID } })
+      ]);
+      const privateAccessories = (privateRes.data || []).map(a => ({ ...a, visibility: 'private' }));
+      const publicAccessories = (publicRes.data || []).map(a => ({ ...a, visibility: 'public' }));
+      setAccessories([...privateAccessories, ...publicAccessories]);
     } catch (err) {
       console.error("Error fetching accessories for modal:", err);
       const errorMsg = err.response?.data?.message || "Failed to load accessories";
@@ -156,9 +161,12 @@ const AccessorySelectionModal = ({ isOpen, onClose, onSelectAccessories, initial
   const filteredAccessories = useMemo(() => {
     return accessories.filter(acc => 
         (acc.name || 'Untitled').toLowerCase().includes(searchTerm.toLowerCase()) &&
-        (!filterCategory || acc.category === filterCategory)
+        (!filterCategory || acc.category === filterCategory) &&
+        (tabIndex === 0 || 
+         (tabIndex === 1 && acc.visibility === 'public') || 
+         (tabIndex === 2 && acc.visibility === 'private'))
     );
-  }, [accessories, searchTerm, filterCategory]);
+  }, [accessories, searchTerm, filterCategory, tabIndex]);
 
   const handleSelect = (accessoryId, shouldSelect) => {
       setSelectedAccessoryIds(prevIds => {
@@ -194,31 +202,43 @@ const AccessorySelectionModal = ({ isOpen, onClose, onSelectAccessories, initial
         </ModalHeader>
         <ModalCloseButton top={4} right={4} />
         <ModalBody pt={4} pb={6} px={6} overflowY="auto">
-          <Flex mb={5} gap={4} wrap="wrap">
-               <InputGroup flex={1} minW="200px">
-                    <InputLeftElement pointerEvents="none">
-                        <Icon as={FiSearch} color="gray.400" />
-                    </InputLeftElement>
-                    <Input 
-                        placeholder="Search accessories by name..." 
-                        value={searchTerm} 
-                        onChange={(e) => setSearchTerm(e.target.value)} 
-                        borderRadius="md"
-                    />
-               </InputGroup>
-               <Select 
-                  placeholder="Filter by Category" 
-                  value={filterCategory}
-                  onChange={(e) => setFilterCategory(e.target.value)}
+          <Flex mb={5} justifyContent="space-between" alignItems="center" wrap="wrap" gap={4}>
+            {/* Tabs on the left */}
+            <Tabs onChange={(index) => setTabIndex(index)} variant="soft-rounded" colorScheme="purple" flexShrink={0}>
+              <TabList>
+                <Tab>All</Tab>
+                <Tab>Public</Tab>
+                <Tab>Private</Tab>
+              </TabList>
+            </Tabs>
+
+            {/* Search and Filter on the right */}
+            <Flex gap={4} wrap="wrap" justifyContent="flex-end" flexGrow={1}>
+              <InputGroup maxW="250px" minW="200px"> 
+                <InputLeftElement pointerEvents="none">
+                  <Icon as={FiSearch} color="gray.400" />
+                </InputLeftElement>
+                <Input 
+                  placeholder="Search accessories by name..." 
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)} 
                   borderRadius="md"
-                  maxW="200px"
-                >
-                  <option value="">All Categories</option>
-                  {ACCESSORY_CATEGORIES.map(cat => (
-                    <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
-                  ))}
-                </Select>
-           </Flex>
+                />
+              </InputGroup>
+              <Select 
+                placeholder="Filter by Category" 
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                borderRadius="md"
+                maxW="200px"
+              >
+                <option value="">All Categories</option>
+                {ACCESSORY_CATEGORIES.map(cat => (
+                  <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+                ))}
+              </Select>
+            </Flex>
+          </Flex>
 
           {isLoading ? (
             <Center py={5}><Spinner size="xl" /></Center>
@@ -238,9 +258,12 @@ const AccessorySelectionModal = ({ isOpen, onClose, onSelectAccessories, initial
           ) : (
              <Center py={5}>
                  <Text>
-                    No accessories found
-                    {searchTerm ? ` matching "${searchTerm}"` : ''}
-                    {filterCategory ? ` in category "${filterCategory}"` : ''}.
+                    {(() => {
+                        if (searchTerm || filterCategory) return "No accessories match your current filters.";
+                        if (tabIndex === 1) return "No public accessories available.";
+                        if (tabIndex === 2) return "No private accessories available.";
+                        return "No accessories available.";
+                    })()}
                  </Text>
              </Center>
           )}

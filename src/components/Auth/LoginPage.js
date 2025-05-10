@@ -1,7 +1,25 @@
 import React, { useState } from 'react';
-import { Box, Heading, Input, Button, VStack, FormControl, FormLabel, useToast } from '@chakra-ui/react';
-import { useNavigate } from 'react-router-dom';
-import axios from 'axios'; // Import axios
+import {
+    Box,
+    Heading,
+    Input,
+    Button,
+    VStack,
+    FormControl,
+    FormLabel,
+    useToast,
+    Flex,
+    Text,
+    Link,
+    Icon,
+    InputGroup,
+    InputLeftElement,
+    useColorModeValue,
+    Image
+} from '@chakra-ui/react';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import axios from 'axios';
+import { FaEnvelope, FaLock } from 'react-icons/fa';
 
 // TODO: Move this to a config file or environment variable
 const API_BASE_URL = 'https://productmarketing-ai-f0e989e4e1ad.herokuapp.com';
@@ -9,13 +27,21 @@ const API_BASE_URL = 'https://productmarketing-ai-f0e989e4e1ad.herokuapp.com';
 function LoginPage({ onLoginSuccess }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false); // Add loading state
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const toast = useToast();
 
-  const handleSubmit = async (e) => { // Make function async
+  // --- Theme Colors (adjust if needed) ---
+  const bgColor = useColorModeValue('gray.50', 'gray.900'); // Background for the whole page
+  const formBgColor = useColorModeValue('white', 'gray.700'); // Background for the form side
+  const graphicBgColor = useColorModeValue('#5647d7', '#3b308a'); // Example purple background for graphic side (similar to image)
+  const textColor = useColorModeValue('gray.600', 'gray.300');
+  const headingColor = useColorModeValue('gray.700', 'white');
+  const linkColor = useColorModeValue('purple.500', 'purple.300');
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsLoading(true); // Start loading
+    setIsLoading(true);
     console.log('Attempting login with:', { email, password });
 
     try {
@@ -32,8 +58,10 @@ function LoginPage({ onLoginSuccess }) {
 
         // Store token in localStorage
         localStorage.setItem('authToken', response.data.token);
-        // Optionally store user info if needed globally later
-        // localStorage.setItem('userInfo', JSON.stringify(response.data.user));
+        // Store user info as well
+        if (response.data.user) {
+            localStorage.setItem('userInfo', JSON.stringify(response.data.user));
+        }
 
         onLoginSuccess(); // Update auth state in App.js (or wherever needed)
         toast({
@@ -83,56 +111,122 @@ function LoginPage({ onLoginSuccess }) {
   };
 
   return (
-    <Box 
-      display="flex" 
-      alignItems="center" 
-      justifyContent="center" 
-      height="100vh" 
-      bg="gray.50"
-    >
-      <Box 
-        p={8} 
-        maxWidth="400px" 
-        borderWidth={1} 
-        borderRadius={8} 
-        boxShadow="lg" 
-        bg="white"
+    <Flex minH="100vh" bg={bgColor}>
+      {/* Left Side: Form */}
+      <Flex
+        flex={1} // Takes up half the space
+        align="center"
+        justify="center"
+        direction="column"
+        bg={formBgColor}
+        p={{ base: 6, md: 12 }}
       >
-        <VStack as="form" spacing={6} onSubmit={handleSubmit}>
-          <Heading as="h2" size="lg" textAlign="center">
-            Login
-          </Heading>
-          <FormControl isRequired>
-            <FormLabel>Email address</FormLabel>
-            <Input 
-              type="email" 
-              placeholder="Enter your email" 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </FormControl>
-          <FormControl isRequired>
-            <FormLabel>Password</FormLabel>
-            <Input 
-              type="password" 
-              placeholder="Enter your password" 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </FormControl>
-          <Button 
-            type="submit" 
-            colorScheme="teal" 
-            width="full" 
-            size="lg"
-            isLoading={isLoading} // Show loading spinner on button
-            loadingText="Logging in..." // Text while loading
-          >
-            Log In
-          </Button>
-        </VStack>
-      </Box>
-    </Box>
+        <Box w="full" maxW="450px">
+            {/* Logo Placeholder - Add your Logo component here */}
+            {/* <YourLogoComponent mb={8} /> */}
+             <Heading as="h1" size="xl" mb={4} color={headingColor} fontWeight="bold">
+                Sign In
+            </Heading>
+            <Text mb={8} color={textColor}>
+                Welcome back! Please enter your details.
+            </Text>
+
+            <VStack as="form" spacing={5} onSubmit={handleSubmit} align="stretch">
+              <FormControl isRequired>
+                <FormLabel fontSize="sm">Email address</FormLabel>
+                <InputGroup>
+                   <InputLeftElement pointerEvents='none'>
+                     <Icon as={FaEnvelope} color='gray.300' />
+                   </InputLeftElement>
+                   <Input
+                     type="email"
+                     placeholder="your.email@example.com"
+                     value={email}
+                     onChange={(e) => setEmail(e.target.value)}
+                     borderRadius="md"
+                     size="lg"
+                     isDisabled={isLoading}
+                   />
+                </InputGroup>
+              </FormControl>
+              <FormControl isRequired>
+                <FormLabel fontSize="sm">Password</FormLabel>
+                 <InputGroup>
+                   <InputLeftElement pointerEvents='none'>
+                      <Icon as={FaLock} color='gray.300' />
+                   </InputLeftElement>
+                   <Input
+                     type="password"
+                     placeholder="Enter your password"
+                     value={password}
+                     onChange={(e) => setPassword(e.target.value)}
+                     borderRadius="md"
+                     size="lg"
+                     isDisabled={isLoading}
+                   />
+                </InputGroup>
+              </FormControl>
+              <Button
+                type="submit"
+                width="full"
+                size="lg"
+                isLoading={isLoading}
+                loadingText="Signing In..."
+                mt={4}
+                // Apply gradient from theme
+                bgGradient="linear(to-r, teal.400, purple.500, blue.500)"
+                color="white"
+                fontWeight="semibold"
+                _hover={{
+                  bgGradient: "linear(to-r, teal.500, purple.600, blue.600)",
+                  boxShadow: "lg",
+                }}
+                _active={{
+                  bgGradient: "linear(to-r, teal.600, purple.700, blue.700)",
+                }}
+                borderRadius="md"
+              >
+                Sign In
+              </Button>
+            </VStack>
+
+            <Text mt={6} textAlign="center" color={textColor}>
+                Don't have an account?{' '}
+                <Link as={RouterLink} to="/signup" color={linkColor} fontWeight="medium">
+                    Sign Up
+                </Link>
+            </Text>
+        </Box>
+      </Flex>
+
+      {/* Right Side: Graphic/Visual */}
+      <Flex
+        flex={1}
+        display={{ base: 'none', md: 'flex' }}
+        align="center"
+        justify="center"
+        direction="column"
+        bgGradient="linear(to-br, blue.200, purple.300)"
+        p={12}
+        position="relative"
+        textAlign="center"
+      >
+        <Image 
+          src="/IMG1.png" 
+          alt="AI fashion model creation graphic"
+          objectFit="contain"
+          maxH="65vh"
+          maxW="85%"
+          mb={8}
+        />
+        <Heading size="lg" fontWeight="bold" color="whiteAlpha.900" mb={3}>
+            Create Your Vision
+         </Heading>
+         <Text fontSize="md" color="whiteAlpha.800" maxW="md">
+            Generate stunning model photoshoots with your apparel in seconds using AI.
+         </Text>
+      </Flex>
+    </Flex>
   );
 }
 
